@@ -6,20 +6,20 @@ A web-based clinical decision-support application that reproduces a local SOP fo
 
 ### Core clinical model
 
-**Case State**:
-All currently known findings, nodule characteristics, and context (including prior imaging measurements such as size or volume change) for the evaluation currently being performed. Transient working input, not a persisted record.
-_Avoid_: Patient record, session, case, Clinical Input State
+**Clinical Input State**:
+All currently known findings, nodule characteristics, and context (including prior imaging measurements such as size or volume change) entered through the current decision wizard for the evaluation being performed. Transient structured input, not a patient record — carries no patient identity and is not persisted as a case.
+_Avoid_: Patient record, session, case, Case State
 
 **Clinical Pathway**:
 A named clinical area within a Rule-Set (e.g. solid nodule follow-up, growth/VDT assessment, Lung-RADS screening) that groups the Gating Rules and Atomic Clinical Rules relevant to that area.
 _Avoid_: Domain, clinical domain, bounded domain, module
 
 **Gating Rule**:
-A rule that determines which Clinical Pathway(s) or special context applies to a Case State (e.g. incidental finding vs. lung cancer screening, benign morphology early exit), evaluated before any source-specific rule evaluation.
+A rule that determines which Clinical Pathway(s) or special context applies to a Clinical Input State (e.g. incidental finding vs. lung cancer screening, benign morphology early exit), evaluated before any source-specific rule evaluation.
 _Avoid_: Applicability check, filter
 
 **Atomic Clinical Rule**:
-The smallest unit of clinical logic: a condition over Case State, scoped to exactly one Recommendation Source, that produces one Recommendation when matched. Two sources disagreeing means two separate Atomic Clinical Rules in the same Clinical Pathway, not one rule with conflicting provenance. Has a stable identity that persists across Rule Revisions.
+The smallest unit of clinical logic: a condition over Clinical Input State, scoped to exactly one Recommendation Source, that produces one Recommendation when matched. Two sources disagreeing means two separate Atomic Clinical Rules in the same Clinical Pathway, not one rule with conflicting provenance. Has a stable identity that persists across Rule Revisions.
 _Avoid_: Rule (when source scope matters), decision rule
 
 **Clinical Endpoint**:
@@ -31,7 +31,7 @@ The single-source output of one Atomic Clinical Rule matching: the Recommendatio
 _Avoid_: Result, answer, output
 
 **Recommendation Set**:
-The full collection of Recommendations produced for one Case State evaluation, one per applicable Recommendation Source, presented together rather than reconciled into a single answer. Carried inside the Decision Execution Trace.
+The full collection of Recommendations produced for one Clinical Input State evaluation, one per applicable Recommendation Source, presented together rather than reconciled into a single answer. Carried inside the Decision Execution Trace.
 _Avoid_: Merged recommendation, consensus recommendation, final recommendation
 
 **Recommendation Source**:
@@ -75,7 +75,7 @@ The versioned collection of Gating Rules and Atomic Clinical Rules across all Cl
 _Avoid_: Rule package, clinical rule package
 
 **Rule-Set Release**:
-An immutable, content-addressable, versioned artifact assembled only from Approved Rule Revisions across Clinical Pathways at a point in time. Never mutated after publication — a later change always produces a new Release. Triggered either by a new Local SOP Version or by a correction to an already-Approved Rule Revision that doesn't change clinical meaning.
+An immutable, content-addressable, versioned artifact assembled only from Approved Rule Revisions across Clinical Pathways at a point in time. Never mutated after publication — a later change always produces a new Release. Triggered either by a new Local SOP Version, or by an authoring/implementation-error correction to an already-Approved Rule Revision that fails to faithfully reproduce the current, unchanged Local SOP Version. A change in actual clinical policy or interpretation must originate from a new Local SOP Version, never from a same-version correction.
 _Avoid_: Rule-set version (as if mutable), build, deploy
 
 **Active Rule-Set Release**:
@@ -87,7 +87,7 @@ The record accompanying a Rule-Set Release listing exactly which Rule Revisions 
 _Avoid_: Changelog, release notes
 
 **Decision Execution Trace**:
-The structured, reproducible record the deterministic engine produces for one evaluation: the Active Rule-Set Release version used, normalized Case State inputs, applicable Clinical Pathway(s), matched rule IDs, the resulting Recommendation Set, and engine/schema version. Ephemeral unless explicitly exported; generated without assuming server-side persistence. Distinct from the Clinical Knowledge Governance Audit, which audits how the knowledge base itself changed, not one evaluation.
+The structured, reproducible record the deterministic engine produces for one evaluation: the Active Rule-Set Release version used, normalized Clinical Input State, applicable Clinical Pathway(s), matched rule IDs, the resulting Recommendation Set, and engine/schema version. Ephemeral unless explicitly exported; generated without assuming server-side persistence. Distinct from the Clinical Knowledge Governance Audit, which audits how the knowledge base itself changed, not one evaluation.
 _Avoid_: Audit log, decision log, result trace
 
 **Clinical Knowledge Governance Audit**:
@@ -97,5 +97,5 @@ _Avoid_: Audit log (ambiguous with Decision Execution Trace), compliance log
 ### Testing
 
 **Golden Clinical Case**:
-A human-reviewed fixture pairing a Case State with its expected Recommendation Set, used as a clinical regression contract. The expected outcome must be authored or reviewed by a human; an implementation agent must never invent the expected answer and use it as test truth. The **Golden Clinical Corpus** is the full collection of Golden Clinical Cases, spanning boundary cases, applicability/exit cases, missing-information cases, source-specific recommendation cases, deliberate multi-guideline divergence cases, and regression cases.
+A human-reviewed fixture pairing a Clinical Input State with its expected Recommendation Set, used as a clinical regression contract. The expected outcome must be authored or reviewed by a human; an implementation agent must never invent the expected answer and use it as test truth. The **Golden Clinical Corpus** is the full collection of Golden Clinical Cases, spanning boundary cases, applicability/exit cases, missing-information cases, source-specific recommendation cases, deliberate multi-guideline divergence cases, and regression cases.
 _Avoid_: Test case (when meaning a clinically-reviewed fixture specifically), example
