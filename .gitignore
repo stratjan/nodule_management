@@ -21,6 +21,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code local state (agent worktrees, etc.)
+.claude/
+
 # Logs
 *.log
 npm-debug.log*
