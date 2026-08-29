@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Rule Revisions carry an explicit Approval Status; Rule-Set Releases are immutable and assembled only from Approved revisions
+
+For v1 the same person authors and clinically approves rules — there are no multi-user accounts, reviewer UI, role-management infrastructure, or database-backed approval workflows. We considered letting authorship itself imply approval, but rejected it: the domain must not assume author and approver are permanently the same person, and several invariants must hold regardless of team size — schema-valid content is not automatically authoritative, passing tests is not clinical approval, and AI-generated or AI-extracted rules are not clinically approved by virtue of existing. So every Rule Revision carries an explicit Approval Status (Draft → Approved, with Superseded and Rejected as terminal states for prior or declined revisions), and the approval event (who, when) is always recorded explicitly, even when author and approver are the same person today.
+
+A Rule-Set Release is an immutable, content-addressable, versioned artifact assembled only from Approved Rule Revisions. It is never mutated after publication; a later change — whether from a new Local SOP Version or a non-clinical correction to an existing Approved revision — always produces a new Release. Exactly one Release is ever designated the Active Rule-Set Release, and promoting a Release to Active is a distinct governance event from publishing it. The running application evaluates only against the Active Release; there is no UI for selecting historical releases in v1. Every Decision Execution Trace records the exact Active Rule-Set Release version used, so historical reproducibility relies on immutable release artifacts and git/tag history, not runtime replay. Runtime historical replay can be added later only if a real product need appears — it does not require re-architecting the release model.
