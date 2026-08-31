@@ -1,0 +1,12 @@
+{
+  "sourceId": "bts",
+  "name": "British Thoracic Society Pulmonary Nodule Guideline",
+  "sourceType": "Source Guideline",
+  "version": "as represented in Local SOP",
+  "originalLanguage": "English",
+  "findings": [
+    "Local SOP's Table 2 vs. narrative interval contradiction for BTS (table: 3 months, narrative: 6-12 months for the same case) is unresolved. No BTS Atomic Clinical Rule of any Approval Status is authored in Phase 1 as a result -- picking one of the two contradictory values to manufacture test content would be an unauthorized clinical decision.",
+    "Correct citation is Callister MEJ et al., Thorax 2015;70(Suppl 2):ii1-ii54, doi:10.1136/thoraxjnl-2015-207168 -- recorded as a finding only, never substituted into the Local SOP's own bibliography or into rule Provenance.",
+    "No Source Applicability Rule is authored for BTS in Phase 1 -- a Source Applicability Rule with no Atomic Clinical Rule behind it to gate has nothing to do in this Release."
+  ]
+}

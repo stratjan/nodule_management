@@ -1,0 +1,21 @@
+{
+  "ruleId": "GR-1",
+  "revisionId": "GR-1-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-08-31" },
+  "provenance": {
+    "sourceDocument": "GitHub issues #1 (Wayfinder map), #5 (final clinical approval), #7 (Phase 1 spec)",
+    "version": "issue #7 revision pass 2",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Issue #7, \"Clinical Pathway Gate (GR-1)\" section"
+  },
+  "clinicalPathwayId": "incidental-solitary-solid-initial",
+  "conditions": [
+    { "field": "nodule_morphology", "op": "eq", "value": "solid" },
+    { "field": "assessment_context", "op": "eq", "value": "incidental" },
+    { "field": "assessment_timepoint", "op": "eq", "value": "initial" },
+    { "field": "nodule_count", "op": "eq", "value": 1 }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "ruleId": "SAR-S3",
+  "revisionId": "SAR-S3-r1",
+  "kind": "source-applicability",
+  "recommendationSourceId": "s3",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-08-31" },
+  "provenance": {
+    "sourceDocument": "Local SOP",
+    "version": "251201 SOP-Rundherdmanagement",
+    "originalLanguage": "German",
+    "sourceType": "Local SOP",
+    "locator": "Tabelle 1, \"Einschlusskriterien der Findings bei inzidentellen Lungenrundherden nach Guideline\", S3 column"
+  },
+  "conditions": [
+    { "field": "age", "op": "gte", "value": 18 },
+    { "field": "known_malignancy_history", "op": "eq", "value": false },
+    { "field": "immunocompromised", "op": "eq", "value": false }
+  ]
+}

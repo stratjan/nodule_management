@@ -1,0 +1,10 @@
+{
+  "sourceId": "s3",
+  "name": "German S3 Lung Cancer Guideline",
+  "sourceType": "Source Guideline",
+  "version": "Langversion 4.0 / April 2025 (as represented in Local SOP)",
+  "originalLanguage": "German",
+  "findings": [
+    "Local SOP body cites S3 as \"Langversion 4.0/April 2025\" while its own bibliography cites \"Langversion 2.2/2023\" -- recorded as a source-quality finding, not resolved by substitution."
+  ]
+}

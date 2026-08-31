@@ -1,0 +1,12 @@
+{
+  "sourceId": "local-sop",
+  "name": "Local SOP -- Rundherdmanagement",
+  "sourceType": "Local SOP",
+  "version": "251201 SOP-Rundherdmanagement",
+  "originalLanguage": "German",
+  "findings": [
+    "Local SOP's own \"Action at Time 0\" row uses the hybrid, imprecise \"5/6-8mm\" category -- not sufficiently precise for an independent executable rule without a further institutional clinical decision. No standalone Local SOP Recommendation is authored in Phase 1.",
+    "No separate Local SOP applicability model is authored in Phase 1 -- only per-source (S3, Fleischner) applicability is evaluated.",
+    "The Local SOP source document itself appears procedurally unreleased (blank effective/release-date fields, unsigned)."
+  ]
+}

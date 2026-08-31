@@ -1,0 +1,164 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f7f8fa;
+  color: #1b1f24;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+header h1 {
+  font-size: 1.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: #57606a;
+  margin-top: 0;
+}
+
+section {
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+@media (min-width: 480px) {
+  .field-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.field select,
+.field input {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+button {
+  padding: 0.6rem 1.1rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  border: 1px solid #1b1f24;
+  background: #1b1f24;
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.button-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.notice {
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.notice-block {
+  margin: 1rem 0;
+}
+
+.outcome-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.outcome {
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.outcome h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.outcome-state {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.outcome-RECOMMENDATION {
+  border-color: #2da44e;
+}
+.outcome-NOT_APPLICABLE {
+  border-color: #57606a;
+}
+.outcome-OUTSIDE_CURRENT_RULESET_SCOPE {
+  border-color: #bf8700;
+}
+.outcome-INSUFFICIENT_INPUT {
+  border-color: #cf222e;
+}
+.outcome-not-in-release {
+  border-style: dashed;
+}
+
+.recommendation {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.rationale {
+  color: #24292f;
+}
+
+.provenance,
+.basis {
+  color: #57606a;
+  font-size: 0.8rem;
+}
+
+.trace {
+  margin-top: 1rem;
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.75rem;
+}

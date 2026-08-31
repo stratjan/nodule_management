@@ -1,0 +1,29 @@
+{
+  "ruleId": "ACR-S3-5TO8MM",
+  "revisionId": "ACR-S3-5TO8MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "s3",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-08-31" },
+  "provenance": {
+    "sourceDocument": "Local SOP",
+    "version": "251201 SOP-Rundherdmanagement",
+    "originalLanguage": "German",
+    "sourceType": "Local SOP",
+    "locator": "Tabelle 2 \"Rundherdmanagment Index CT\" + S3 narrative section (April 2025 representation)"
+  },
+  "measurementBasis": "volume-preferred",
+  "diameterConditions": [
+    { "field": "nodule_size_mm", "op": "gte", "value": 5.0 },
+    { "field": "nodule_size_mm", "op": "lt", "value": 8.0 }
+  ],
+  "volumeConditions": [
+    { "field": "nodule_volume_mm3", "op": "gte", "value": 80 },
+    { "field": "nodule_volume_mm3", "op": "lt", "value": 300 }
+  ],
+  "recommendation": {
+    "clinicalEndpoint": "CT surveillance",
+    "intervals": ["3 months", "6-12 months", "18-24 months"],
+    "rationale": "S3 recommends a three-stage CT surveillance schedule (3, 6-12, and 18-24 months) for a solitary, solid, incidental pulmonary nodule in the 5mm-<8mm diameter (or 80mm3-<300mm3 volume) range, in a patient >=18 years old with no known malignancy history and not immunocompromised."
+  }
+}

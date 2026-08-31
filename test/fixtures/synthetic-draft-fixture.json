@@ -1,0 +1,15 @@
+{
+  "ruleId": "TEST-SYNTHETIC-DRAFT",
+  "revisionId": "TEST-SYNTHETIC-DRAFT-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Draft",
+  "provenance": {
+    "sourceDocument": "test fixture -- not a real clinical source",
+    "version": "n/a",
+    "originalLanguage": "English",
+    "sourceType": "Synthetic test fixture",
+    "locator": "test/fixtures/synthetic-draft-fixture.json"
+  },
+  "clinicalPathwayId": "test-only-not-a-real-pathway",
+  "conditions": [{ "field": "test_only_field", "op": "eq", "value": "test_only_value" }]
+}
