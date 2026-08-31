@@ -1,0 +1,20 @@
+{
+  "ruleId": "SAR-FLEISCHNER",
+  "revisionId": "SAR-FLEISCHNER-r1",
+  "kind": "source-applicability",
+  "recommendationSourceId": "fleischner",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-08-31" },
+  "provenance": {
+    "sourceDocument": "Local SOP",
+    "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+    "originalLanguage": "German",
+    "sourceType": "Local SOP",
+    "locator": "Tabelle 1, \"Einschlusskriterien der Findings bei inzidentellen Lungenrundherden nach Guideline\", Fleischner column"
+  },
+  "conditions": [
+    { "field": "age", "op": "gte", "value": 35 },
+    { "field": "known_malignancy_history", "op": "eq", "value": false },
+    { "field": "immunocompromised", "op": "eq", "value": false }
+  ]
+}
