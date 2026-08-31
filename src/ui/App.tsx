@@ -4,6 +4,7 @@ import type { ClinicalInputState, DecisionExecutionTrace } from "../engine/types
 import { activeRelease } from "../data/activeRelease";
 import { activeManifest } from "../data/activeManifest";
 import { pathwayFields, measurementFields, applicabilityFields } from "../workflow/fields";
+import { canContinuePastPathwayStep, isNoduleCountOutOfScope } from "../workflow/pathwayNavigation";
 import { FieldInput } from "./FieldInput";
 
 type FieldValue = string | number | boolean | undefined;
@@ -31,10 +32,9 @@ export function App() {
     setInput((prev) => ({ ...prev, [id]: value }));
   };
 
-  const pathwayComplete = pathwayFields.every((f) => input[f.id as keyof ClinicalInputState] !== undefined);
   const hasMeasurement = input.nodule_size_mm !== undefined || input.nodule_volume_mm3 !== undefined;
 
-  const canConfirmPathway = pathwayComplete;
+  const canConfirmPathway = canContinuePastPathwayStep(input);
   const canEvaluate = hasMeasurement;
 
   const handleConfirmPathway = () => {
@@ -86,11 +86,11 @@ export function App() {
               />
             ))}
           </div>
-          {input.nodule_count !== undefined && input.nodule_count !== 1 && (
+          {isNoduleCountOutOfScope(input) && (
             <p className="notice notice-block">
               This pathway is scoped to a solitary nodule only. A nodule count of{" "}
               {input.nodule_count} (discrete-multiple or disseminated) is out of scope for this
-              vertical slice.
+              vertical slice. Continue is disabled until nodule count is 1.
             </p>
           )}
           <button disabled={!canConfirmPathway} onClick={handleConfirmPathway}>

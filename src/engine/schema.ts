@@ -17,6 +17,15 @@ const provenanceSchema = z.object({
   locator: z.string().min(1),
 });
 
+export const localSopSnapshotSchema = z.object({
+  documentTitle: z.string().min(1),
+  sourceFilename: z.string().min(1),
+  createdAt: z.string().min(1),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, "sha256 must be a 64-character lowercase hex digest"),
+  proceduralStatus: z.string().min(1),
+  originalLanguage: z.string().min(1),
+});
+
 // ADR-0009/0010's fixed condition vocabulary — nothing beyond eq/gte/lt/lte, no functions,
 // no expression strings, no OR/NOT.
 const conditionSchema = z.object({
@@ -61,8 +70,8 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
 });
 
 // discriminatedUnion requires each member to be a plain ZodObject (not a refined ZodEffects),
-// so the atomic-clinical-rule cross-field checks are applied as a refinement on the union
-// itself rather than on its member schema.
+// so all cross-field checks are applied as refinements on the union itself rather than on its
+// member schemas.
 export const ruleRevisionSchema = z
   .discriminatedUnion("kind", [
     pathwayGateRevisionSchema,
@@ -79,6 +88,13 @@ export const ruleRevisionSchema = z
       rule.measurementBasis !== "volume-preferred" ||
       (rule.volumeConditions?.length ?? 0) > 0,
     "volume-preferred atomic-clinical-rule must define volumeConditions",
+  )
+  // ADR-0007: every Approved Rule Revision carries an explicit, recorded approval event (who,
+  // when) -- approval is never implied by authorship or by approvalStatus alone. Structurally
+  // impossible to parse an Approved revision without one.
+  .refine(
+    (rule) => rule.approvalStatus !== "Approved" || rule.approvalEvent !== undefined,
+    "an Approved Rule Revision must carry an explicit approvalEvent (by, at)",
   );
 
 export const ruleSetReleaseSchema = z.object({
@@ -90,7 +106,7 @@ export const ruleSetReleaseSchema = z.object({
 export const releaseManifestSchema = z.object({
   releaseId: z.string().min(1),
   createdAt: z.string().min(1),
-  motivatingLocalSopVersion: z.string().min(1),
+  motivatingLocalSopSnapshot: localSopSnapshotSchema,
   includedRevisions: z
     .array(
       z.object({

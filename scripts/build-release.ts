@@ -5,12 +5,13 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildRuleSetRelease } from "../src/engine/releaseBuilder";
+import { buildRuleSetRelease, requireApprovalEvent } from "../src/engine/releaseBuilder";
 import {
   ruleRevisionSchema,
   ruleSetReleaseSchema,
   releaseManifestSchema,
   activeRuleSetPointerSchema,
+  localSopSnapshotSchema,
 } from "../src/engine/schema";
 import type { ReleaseManifest, ReleaseManifestEntry, RuleRevision } from "../src/engine/types";
 
@@ -35,17 +36,25 @@ const revisions = ruleFiles.map(loadRevision);
 const release = buildRuleSetRelease(revisions);
 ruleSetReleaseSchema.parse(release);
 
+// requireApprovalEvent throws MissingApprovalEventError rather than trusting a non-null
+// assertion here -- buildRuleSetRelease having succeeded above already guarantees every
+// revision has one, but the guarantee is enforced there, not asserted at this call site.
 const manifestEntries: ReleaseManifestEntry[] = revisions.map((r) => ({
   ruleId: r.ruleId,
   revisionId: r.revisionId,
   kind: r.kind,
-  approvalEvent: r.approvalEvent!,
+  approvalEvent: requireApprovalEvent(r),
 }));
+
+const localSopSourceRaw = JSON.parse(
+  readFileSync(join(repoRoot, "clinical/sources/local-sop.json"), "utf-8"),
+);
+const motivatingLocalSopSnapshot = localSopSnapshotSchema.parse(localSopSourceRaw.snapshot);
 
 const manifest: ReleaseManifest = {
   releaseId: release.releaseId,
   createdAt: release.createdAt,
-  motivatingLocalSopVersion: "251201 SOP-Rundherdmanagement",
+  motivatingLocalSopSnapshot,
   includedRevisions: manifestEntries,
   sourceQualityFindings: [
     "BTS Table 2 vs. narrative interval contradiction (table: 3 months, narrative: 6-12 months for the same case) -- unresolved; recorded here, never picked between to manufacture rule content.",

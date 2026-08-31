@@ -16,6 +16,21 @@ export interface Provenance {
   locator: string;
 }
 
+/**
+ * Identifies a specific local, gitignored Local SOP source file by content, not by an invented
+ * formal version label -- the Local SOP source document itself appears procedurally unreleased
+ * (no effective/release-date fields, unsigned), so it has no formal version to cite. The file's
+ * bytes are never committed; this metadata (including the content hash) is.
+ */
+export interface LocalSopSnapshot {
+  documentTitle: string;
+  sourceFilename: string;
+  createdAt: string;
+  sha256: string;
+  proceduralStatus: string;
+  originalLanguage: string;
+}
+
 /** ADR-0009/0010: the fixed, deterministic, side-effect-free condition vocabulary. AND-only, no OR/NOT. */
 export type ConditionOp = "eq" | "gte" | "lt" | "lte";
 
@@ -83,7 +98,7 @@ export interface ReleaseManifestEntry {
 export interface ReleaseManifest {
   releaseId: string;
   createdAt: string;
-  motivatingLocalSopVersion: string;
+  motivatingLocalSopSnapshot: LocalSopSnapshot;
   includedRevisions: ReleaseManifestEntry[];
   sourceQualityFindings: string[];
   notes: string[];

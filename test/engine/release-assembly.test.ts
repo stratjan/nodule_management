@@ -5,7 +5,11 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildRuleSetRelease, NonApprovedRevisionError } from "../../src/engine/releaseBuilder";
+import {
+  buildRuleSetRelease,
+  NonApprovedRevisionError,
+  MissingApprovalEventError,
+} from "../../src/engine/releaseBuilder";
 import { ruleRevisionSchema } from "../../src/engine/schema";
 import type { RuleRevision } from "../../src/engine/types";
 import { loadApprovedPhase1Revisions } from "../helpers/loadTestRelease";
@@ -52,5 +56,17 @@ describe("Rule-Set Release assembly", () => {
   it("rejects a synthetic, clearly-non-clinical Draft Rule Revision", () => {
     const revisions = [...loadApprovedPhase1Revisions(), loadSyntheticDraftFixture()];
     expect(() => buildRuleSetRelease(revisions)).toThrow(NonApprovedRevisionError);
+  });
+
+  it("rejects an Approved revision that carries no explicit approval event (ADR-0007)", () => {
+    // Constructed directly (not through ruleRevisionSchema.parse, which already rejects this
+    // shape) to independently exercise buildRuleSetRelease's own enforcement -- release
+    // assembly must not rely solely on schema validation having run first.
+    const [gate, ...rest] = loadApprovedPhase1Revisions();
+    const gateWithoutApprovalEvent: RuleRevision = { ...gate, approvalEvent: undefined };
+
+    expect(() => buildRuleSetRelease([gateWithoutApprovalEvent, ...rest])).toThrow(
+      MissingApprovalEventError,
+    );
   });
 });

@@ -2,8 +2,15 @@
   "sourceId": "local-sop",
   "name": "Local SOP -- Rundherdmanagement",
   "sourceType": "Local SOP",
-  "version": "251201 SOP-Rundherdmanagement",
   "originalLanguage": "German",
+  "snapshot": {
+    "documentTitle": "SOP-Rundherdmanagement",
+    "sourceFilename": "251201 SOP-Rundherdmanagement.docx",
+    "createdAt": "2024-12-08",
+    "sha256": "a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6",
+    "proceduralStatus": "Unreleased -- effective/release-date fields blank, unsigned",
+    "originalLanguage": "German"
+  },
   "findings": [
     "Local SOP's own \"Action at Time 0\" row uses the hybrid, imprecise \"5/6-8mm\" category -- not sufficiently precise for an independent executable rule without a further institutional clinical decision. No standalone Local SOP Recommendation is authored in Phase 1.",
     "No separate Local SOP applicability model is authored in Phase 1 -- only per-source (S3, Fleischner) applicability is evaluated.",

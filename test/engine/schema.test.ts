@@ -34,6 +34,43 @@ describe("clinical rule JSON validates against the schema", () => {
   }
 });
 
+describe("ADR-0007 approval-event invariant", () => {
+  it("rejects an Approved revision with no approvalEvent at all", () => {
+    const raw = JSON.parse(
+      readFileSync(
+        join(repoRoot, "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json"),
+        "utf-8",
+      ),
+    );
+    delete raw.approvalEvent;
+    expect(raw.approvalStatus).toBe("Approved");
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow(/approvalEvent/);
+  });
+
+  it("rejects an Approved revision with a partial approvalEvent (missing 'at')", () => {
+    const raw = JSON.parse(
+      readFileSync(
+        join(repoRoot, "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json"),
+        "utf-8",
+      ),
+    );
+    raw.approvalEvent = { by: "stratjan" };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("still accepts a Draft revision with no approvalEvent", () => {
+    const raw = JSON.parse(
+      readFileSync(
+        join(repoRoot, "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json"),
+        "utf-8",
+      ),
+    );
+    raw.approvalStatus = "Draft";
+    delete raw.approvalEvent;
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+});
+
 describe("assembled Release / Manifest / Active pointer", () => {
   it("a Release built from the Approved revisions validates against ruleSetReleaseSchema", () => {
     const release = buildRuleSetRelease(loadApprovedPhase1Revisions());

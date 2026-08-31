@@ -205,6 +205,12 @@ export function evaluate(
     const applicability = applicabilityRules.find(
       (r) => r.recommendationSourceId === sourceId,
     )!;
+    // PHASE 2 TECH DEBT: .find() picks at most one Atomic Clinical Rule per source, matching
+    // Phase 1's approved scope (exactly one size bucket per source: S3 5-<8mm, Fleischner
+    // 6-8mm). Additional size buckets per source (e.g. S3's own >=8mm pathway, explicitly out
+    // of Phase 1 scope per issue #7) will need multiple Atomic Clinical Rules per source here,
+    // each matched independently and the first/only match selected -- not implemented now
+    // because Phase 1 has no Approved rule content that needs it.
     const atomicRule = atomicRules.find((r) => r.recommendationSourceId === sourceId);
     if (!atomicRule) continue;
 
