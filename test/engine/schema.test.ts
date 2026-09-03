@@ -23,6 +23,7 @@ const RULE_FILES = [
   "clinical/rules/applicability/fleischner-applicability.json",
   "clinical/rules/recommendations/s3-5to8mm.json",
   "clinical/rules/recommendations/fleischner-6to8mm.json",
+  "clinical/rules/recommendations/fleischner-gt8to30mm.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -68,6 +69,117 @@ describe("ADR-0007 approval-event invariant", () => {
     raw.approvalStatus = "Draft";
     delete raw.approvalEvent;
     expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+});
+
+describe("issue #20: gt operator, structured recommendation, measurement convention, multi-anchor provenance", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const GT8MM_PATH = "clinical/rules/recommendations/fleischner-gt8to30mm.json";
+  const GATE_PATH = "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json";
+  const APPLICABILITY_PATH = "clinical/rules/applicability/fleischner-applicability.json";
+
+  it("accepts the `gt` operator", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    expect(raw.diameterConditions.some((c: any) => c.op === "gt")).toBe(true);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects an unrecognized operator string", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.diameterConditions[0].op = "gte-or-something";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts the structured recommendation form with a non-empty actions array, including the not-specified-by-source timing form", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    expect(raw.recommendation.actions.length).toBeGreaterThan(0);
+    expect(raw.recommendation.actions.some((a: any) => a.timing.kind === "not-specified-by-source")).toBe(
+      true,
+    );
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects a structured recommendation with an empty actions array", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.recommendation.actions = [];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a timing value that is neither of the two valid forms", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.recommendation.actions[0].timing = { kind: "sometimes" };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a recommendation declaring both the legacy and structured forms at once", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.recommendation.clinicalEndpoint = "test-only";
+    raw.recommendation.intervals = ["test-only"];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a recommendation declaring neither the legacy nor the structured form", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.recommendation = { rationale: raw.recommendation.rationale };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects an unrecognized MeasurementConventionId value", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.measurementConventionId = "some-other-unrecognized-convention";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts the multi-anchor provenance form on an Atomic Clinical Rule", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    expect(raw.provenanceAnchors.length).toBeGreaterThanOrEqual(3);
+    expect(raw.provenance).toBeUndefined();
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects an Atomic Clinical Rule declaring both provenance and provenanceAnchors at once", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    raw.provenance = raw.provenanceAnchors[0].provenance;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects an Atomic Clinical Rule declaring neither provenance nor provenanceAnchors", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    delete raw.provenanceAnchors;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a provenance anchor missing a required semantic role", () => {
+    const raw = loadRaw(GT8MM_PATH);
+    delete raw.provenanceAnchors[0].role;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("pathwayGateRevisionSchema/sourceApplicabilityRevisionSchema reject a provenanceAnchors field -- multi-anchor provenance is not available outside Atomic Clinical Rules", () => {
+    const gateRaw = loadRaw(GATE_PATH);
+    gateRaw.provenanceAnchors = [{ role: "test-only", provenance: gateRaw.provenance }];
+    expect(() => ruleRevisionSchema.parse(gateRaw)).toThrow();
+
+    const applicabilityRaw = loadRaw(APPLICABILITY_PATH);
+    applicabilityRaw.provenanceAnchors = [{ role: "test-only", provenance: applicabilityRaw.provenance }];
+    expect(() => ruleRevisionSchema.parse(applicabilityRaw)).toThrow();
+  });
+
+  it("the unmodified Phase-1 fleischner-6to8mm.json and s3-5to8mm.json fixtures still parse under the evolved schema (backward compatibility)", () => {
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-6to8mm.json")),
+    ).not.toThrow();
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/s3-5to8mm.json")),
+    ).not.toThrow();
+    // S3 declares none of the new fields.
+    const s3Raw = loadRaw("clinical/rules/recommendations/s3-5to8mm.json");
+    expect(s3Raw.measurementConventionId).toBeUndefined();
+    expect(s3Raw.provenanceAnchors).toBeUndefined();
+    expect(s3Raw.recommendation.actions).toBeUndefined();
   });
 });
 

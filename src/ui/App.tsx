@@ -6,6 +6,7 @@ import { activeManifest } from "../data/activeManifest";
 import { pathwayFields, measurementFields, applicabilityFields } from "../workflow/fields";
 import { canContinuePastPathwayStep, isNoduleCountOutOfScope } from "../workflow/pathwayNavigation";
 import { FieldInput } from "./FieldInput";
+import { RecommendationView } from "./RecommendationView";
 
 type FieldValue = string | number | boolean | undefined;
 type Step = "pathway" | "clinical-details" | "results";
@@ -27,6 +28,11 @@ export function App() {
   const [input, setInput] = useState<ClinicalInputState>({});
   const [trace, setTrace] = useState<DecisionExecutionTrace | null>(null);
   const [showTrace, setShowTrace] = useState(false);
+  // issue #20: a minimal, explicit affirmation tied to the existing diameter field -- never a
+  // blind copy of it. Kept as UI-only state, not a ClinicalInputState field itself; only
+  // translated into a convention-bound nodule_diameter_measurements entry when the clinician has
+  // actually checked it, at evaluation time.
+  const [fleischnerConventionConfirmed, setFleischnerConventionConfirmed] = useState(false);
 
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => ({ ...prev, [id]: value }));
@@ -43,7 +49,19 @@ export function App() {
   };
 
   const handleEvaluate = () => {
-    const result = evaluate(input, activeRelease);
+    // issue #20: the Fleischner-bound convention-checked measurement is populated only when the
+    // clinician has explicitly affirmed it -- never inferred from nodule_size_mm alone. The
+    // legacy nodule_size_mm value used by S3/BTS is untouched either way.
+    const evaluationInput: ClinicalInputState =
+      fleischnerConventionConfirmed && input.nodule_size_mm !== undefined
+        ? {
+            ...input,
+            nodule_diameter_measurements: [
+              { valueMm: input.nodule_size_mm, conventionId: "fleischner-2017-average-diameter" },
+            ],
+          }
+        : input;
+    const result = evaluate(evaluationInput, activeRelease);
     setTrace(result);
     setStep("results");
   };
@@ -52,6 +70,7 @@ export function App() {
     setInput({});
     setTrace(null);
     setShowTrace(false);
+    setFleischnerConventionConfirmed(false);
     setStep("pathway");
   };
 
@@ -113,6 +132,20 @@ export function App() {
               />
             ))}
           </div>
+          <label className="field field-checkbox">
+            <input
+              type="checkbox"
+              checked={fleischnerConventionConfirmed}
+              disabled={input.nodule_size_mm === undefined}
+              onChange={(e) => setFleischnerConventionConfirmed(e.target.checked)}
+            />
+            <span>
+              The diameter above was measured using Fleischner&apos;s average-diameter convention
+              (long-axis + perpendicular short-axis average, same plane, greatest-dimension plane,
+              rounded to the nearest whole mm). Required for a Fleischner recommendation above
+              8mm; leave unchecked if unsure.
+            </span>
+          </label>
           <p>
             Age, malignancy history, and immunocompromise status are used independently by each
             guideline. Leaving one blank only affects the guideline(s) that need it.
@@ -155,21 +188,7 @@ export function App() {
                   <p className="outcome-state">{OUTCOME_LABELS[outcome.state]}</p>
                   {outcome.reason && <p className="outcome-reason">{outcome.reason}</p>}
                   {outcome.state === "RECOMMENDATION" && outcome.recommendation && (
-                    <div className="recommendation">
-                      <p>
-                        <strong>{outcome.recommendation.clinicalEndpoint}</strong>:{" "}
-                        {outcome.recommendation.intervals.join(", ")}
-                      </p>
-                      <p className="rationale">{outcome.recommendation.rationale}</p>
-                      <p className="provenance">
-                        Provenance: {outcome.recommendation.provenance.sourceDocument} (
-                        {outcome.recommendation.provenance.version}),{" "}
-                        {outcome.recommendation.provenance.locator}
-                      </p>
-                      <p className="basis">
-                        Measurement basis used: {outcome.recommendation.measurementBasisUsed}
-                      </p>
-                    </div>
+                    <RecommendationView recommendation={outcome.recommendation} />
                   )}
                   {outcome.measurementDiscordance && (
                     <p className="notice">

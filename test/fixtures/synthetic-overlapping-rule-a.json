@@ -1,0 +1,25 @@
+{
+  "ruleId": "TEST-SYNTHETIC-OVERLAP-A",
+  "revisionId": "TEST-SYNTHETIC-OVERLAP-A-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "test-only-synthetic-source",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "test-fixture", "at": "2026-01-01" },
+  "provenance": {
+    "sourceDocument": "test fixture -- not a real clinical source",
+    "version": "n/a",
+    "originalLanguage": "English",
+    "sourceType": "Synthetic test fixture",
+    "locator": "test/fixtures/synthetic-overlapping-rule-a.json"
+  },
+  "measurementBasis": "diameter",
+  "diameterConditions": [
+    { "field": "test_only_numeric_field", "op": "gte", "value": 5 },
+    { "field": "test_only_numeric_field", "op": "lte", "value": 10 }
+  ],
+  "recommendation": {
+    "clinicalEndpoint": "test-only-not-a-real-recommendation",
+    "intervals": ["n/a"],
+    "rationale": "Synthetic fixture for release-assembly overlap testing only -- not real clinical content."
+  }
+}

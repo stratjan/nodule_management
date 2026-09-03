@@ -65,6 +65,18 @@ section {
   border-radius: 6px;
 }
 
+.field-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.field-checkbox input {
+  margin-top: 0.2rem;
+  width: auto;
+}
+
 button {
   padding: 0.6rem 1.1rem;
   font-size: 1rem;
@@ -151,6 +163,30 @@ button:disabled {
 .basis {
   color: #57606a;
   font-size: 0.8rem;
+}
+
+.action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.clinical-action {
+  font-size: 0.9rem;
+}
+
+.timing-not-specified {
+  color: #57606a;
+  font-style: italic;
+}
+
+.provenance-anchors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .trace {

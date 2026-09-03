@@ -21,13 +21,25 @@ const baseApplicability = {
   immunocompromised: false,
 } as const;
 
+/** issue #20: the corrected Fleischner 6-8mm rule and the new >8mm rule both require this
+ * convention-bound diameter measurement -- kept separate from the legacy, untagged
+ * nodule_size_mm the boundary fixtures below already set. */
+function fleischnerMeasurement(valueMm: number) {
+  return [{ valueMm, conventionId: "fleischner-2017-average-diameter" as const }];
+}
+
 function outcomeFor(trace: ReturnType<typeof evaluate>, sourceId: string) {
   return trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === sourceId);
 }
 
 describe("size boundaries", () => {
   it("5.0mm: S3 RECOMMENDATION, Fleischner OUTSIDE_CURRENT_RULESET_SCOPE", () => {
-    const input: ClinicalInputState = { ...basePathway, ...baseApplicability, nodule_size_mm: 5.0 };
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5.0,
+      nodule_diameter_measurements: fleischnerMeasurement(5.0),
+    };
     const trace = evaluate(input, release);
     expect(outcomeFor(trace, "s3")?.state).toBe("RECOMMENDATION");
     expect(outcomeFor(trace, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
@@ -35,11 +47,21 @@ describe("size boundaries", () => {
 
   it("5.9mm -> 6.0mm: Fleischner flips OUTSIDE_CURRENT_RULESET_SCOPE -> RECOMMENDATION", () => {
     const at59 = evaluate(
-      { ...basePathway, ...baseApplicability, nodule_size_mm: 5.9 },
+      {
+        ...basePathway,
+        ...baseApplicability,
+        nodule_size_mm: 5.9,
+        nodule_diameter_measurements: fleischnerMeasurement(5.9),
+      },
       release,
     );
     const at60 = evaluate(
-      { ...basePathway, ...baseApplicability, nodule_size_mm: 6.0 },
+      {
+        ...basePathway,
+        ...baseApplicability,
+        nodule_size_mm: 6.0,
+        nodule_diameter_measurements: fleischnerMeasurement(6.0),
+      },
       release,
     );
     expect(outcomeFor(at59, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
@@ -48,16 +70,29 @@ describe("size boundaries", () => {
 
   it("7.9mm -> 8.0mm: S3 flips RECOMMENDATION -> OUTSIDE_CURRENT_RULESET_SCOPE; Fleischner stays RECOMMENDATION at 8.0mm", () => {
     const at79 = evaluate(
-      { ...basePathway, ...baseApplicability, nodule_size_mm: 7.9 },
+      {
+        ...basePathway,
+        ...baseApplicability,
+        nodule_size_mm: 7.9,
+        nodule_diameter_measurements: fleischnerMeasurement(7.9),
+      },
       release,
     );
     const at80 = evaluate(
-      { ...basePathway, ...baseApplicability, nodule_size_mm: 8.0 },
+      {
+        ...basePathway,
+        ...baseApplicability,
+        nodule_size_mm: 8.0,
+        nodule_diameter_measurements: fleischnerMeasurement(8.0),
+      },
       release,
     );
     expect(outcomeFor(at79, "s3")?.state).toBe("RECOMMENDATION");
     expect(outcomeFor(at80, "s3")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
     expect(outcomeFor(at80, "fleischner")?.state).toBe("RECOMMENDATION");
+    expect(outcomeFor(at80, "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-6TO8MM",
+    );
   });
 
   it("volume-mirrored boundaries for S3: 80mm3 matches, 300mm3 does not", () => {
@@ -249,5 +284,123 @@ describe("measurement discordance", () => {
     expect(s3?.state).toBe("RECOMMENDATION");
     expect(s3?.recommendation?.measurementBasisUsed).toBe("volume");
     expect(s3?.measurementValues).toEqual({ diameter: 4, volume: 180 });
+  });
+});
+
+describe("Fleischner >8mm rule (issue #20)", () => {
+  it("8mm-exactly: existing 6-8mm rule still applies, unchanged", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 8,
+      nodule_diameter_measurements: fleischnerMeasurement(8),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-6TO8MM");
+  });
+
+  it("9mm: new >8mm rule applies (smallest normalized whole-mm value above 8)", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 9,
+      nodule_diameter_measurements: fleischnerMeasurement(9),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-GT8TO30MM");
+  });
+
+  it("30mm-exactly: new >8mm rule still applies (inclusive)", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 30,
+      nodule_diameter_measurements: fleischnerMeasurement(30),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-GT8TO30MM");
+  });
+
+  it("31mm: OUTSIDE_CURRENT_RULESET_SCOPE (no longer a 'nodule' by Fleischner's own terminology)", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 31,
+      nodule_diameter_measurements: fleischnerMeasurement(31),
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+  });
+});
+
+describe("measurement-convention enforcement (issue #20)", () => {
+  it("Fleischner-eligible input with no nodule_diameter_measurements: INSUFFICIENT_INPUT naming the required convention", () => {
+    const input: ClinicalInputState = { ...basePathway, ...baseApplicability, nodule_size_mm: 9 };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("fleischner-2017-average-diameter");
+  });
+
+  it("Fleischner-eligible input with an empty nodule_diameter_measurements array: INSUFFICIENT_INPUT", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 9,
+      nodule_diameter_measurements: [],
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.state).toBe("INSUFFICIENT_INPUT");
+  });
+
+  it("Fleischner-eligible input with a differently-tagged measurement: INSUFFICIENT_INPUT naming what was supplied", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 9,
+      nodule_diameter_measurements: [{ valueMm: 9, conventionId: "some-other-convention" as any }],
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("some-other-convention");
+  });
+
+  it("a matching convention-bound entry produces RECOMMENDATION exactly as it would without this check", () => {
+    const input: ClinicalInputState = {
+      ...basePathway,
+      ...baseApplicability,
+      nodule_size_mm: 9,
+      nodule_diameter_measurements: fleischnerMeasurement(9),
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.state).toBe("RECOMMENDATION");
+  });
+
+  it("S3 is unaffected by nodule_diameter_measurements presence, absence, or contents -- continues reading nodule_size_mm directly", () => {
+    const withMeasurement = evaluate(
+      {
+        ...basePathway,
+        ...baseApplicability,
+        nodule_size_mm: 7,
+        nodule_diameter_measurements: fleischnerMeasurement(7),
+      },
+      release,
+    );
+    const without = evaluate(
+      { ...basePathway, ...baseApplicability, nodule_size_mm: 7 },
+      release,
+    );
+    expect(outcomeFor(withMeasurement, "s3")?.state).toBe("RECOMMENDATION");
+    expect(outcomeFor(without, "s3")?.state).toBe("RECOMMENDATION");
+    expect((outcomeFor(withMeasurement, "s3")?.recommendation as any)?.clinicalEndpoint).toBe(
+      (outcomeFor(without, "s3")?.recommendation as any)?.clinicalEndpoint,
+    );
   });
 });

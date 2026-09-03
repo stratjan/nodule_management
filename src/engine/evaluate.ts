@@ -3,7 +3,7 @@
 //     -> Clinical Pathway Gating Rule(s)
 //     -> applicable Clinical Pathway
 //     -> per-source Source Applicability Rule
-//     -> per-source Atomic Clinical Rule evaluation
+//     -> per-source Atomic Clinical Rule evaluation (evaluate-all-then-classify, issue #20)
 //     -> Source Evaluation Outcome (RECOMMENDATION | NOT_APPLICABLE
 //                                    | OUTSIDE_CURRENT_RULESET_SCOPE | INSUFFICIENT_INPUT)
 //     -> Recommendation Set (RECOMMENDATION-state entries only)
@@ -15,13 +15,39 @@ import type {
   ClinicalInputState,
   DecisionExecutionTrace,
   PathwayGateRevision,
+  RecommendationPayload,
   RuleSetRelease,
   SourceApplicabilityRevision,
   SourceEvaluationOutcome,
 } from "./types";
+import { hasMultiAnchorProvenance, isStructuredRecommendation } from "./types";
 
 export const ENGINE_VERSION = "1.0.0";
 export const SCHEMA_VERSION = "1.0.0";
+
+/**
+ * issue #20: more than one Approved Atomic Clinical Rule matching the same Clinical Input State
+ * for one Recommendation Source is an invalid/ambiguous Rule-Set condition, not a clinical
+ * outcome a source can produce -- it is a distinct, typed engine error `evaluate()` raises,
+ * never a new SourceEvaluationOutcomeState. Release-time validation (releaseBuilder.ts) already
+ * rejects the deterministically-provable cases; this is the runtime backstop for whatever
+ * residual case release-time validation could not prove ahead of time.
+ */
+export class AmbiguousRuleMatchError extends Error {
+  constructor(
+    public readonly recommendationSourceId: string,
+    public readonly matchedRules: AtomicClinicalRuleRevision[],
+  ) {
+    super(
+      `Ambiguous Rule-Set: ${matchedRules.length} Approved Atomic Clinical Rules for ` +
+        `Recommendation Source "${recommendationSourceId}" all matched the same Clinical Input ` +
+        `State: ${matchedRules.map((r) => `${r.ruleId}@${r.revisionId}`).join(", ")}. The engine ` +
+        `refuses to select a winner; this indicates a Rule-Set authoring defect that release-time ` +
+        `validation should have caught.`,
+    );
+    this.name = "AmbiguousRuleMatchError";
+  }
+}
 
 function isPathwayGate(r: RuleSetRelease["revisions"][number]): r is PathwayGateRevision {
   return r.kind === "pathway-gate";
@@ -37,24 +63,50 @@ function isAtomicClinicalRule(
   return r.kind === "atomic-clinical-rule";
 }
 
-function evaluateAtomicRule(
+/** issue #20: carries whichever recommendation form and provenance form the rule declared,
+ * through to the trace/Recommendation Set -- never synthesizing the other form. */
+function buildRecommendationPayload(
+  rule: AtomicClinicalRuleRevision,
+  basisUsed: "diameter" | "volume",
+): RecommendationPayload {
+  const content = isStructuredRecommendation(rule.recommendation)
+    ? { actions: rule.recommendation.actions, rationale: rule.recommendation.rationale }
+    : {
+        clinicalEndpoint: rule.recommendation.clinicalEndpoint,
+        intervals: rule.recommendation.intervals,
+        rationale: rule.recommendation.rationale,
+      };
+
+  const provenanceCarrier = hasMultiAnchorProvenance(rule)
+    ? { provenanceAnchors: rule.provenanceAnchors }
+    : { provenance: rule.provenance };
+
+  return {
+    matchedRuleId: rule.ruleId,
+    matchedRevisionId: rule.revisionId,
+    measurementBasisUsed: basisUsed,
+    ...content,
+    ...provenanceCarrier,
+  } as RecommendationPayload;
+}
+
+/** One rule's own evaluation result, fully built regardless of which state it lands in --
+ * classification (matched / not-matched / insufficient-input) is read off `outcome.state`. */
+interface SingleRuleResult {
+  rule: AtomicClinicalRuleRevision;
+  outcome: SourceEvaluationOutcome;
+}
+
+function evaluateSingleAtomicRule(
   rule: AtomicClinicalRuleRevision,
   input: ClinicalInputState,
-): SourceEvaluationOutcome {
+): SingleRuleResult {
   const sourceId = rule.recommendationSourceId;
 
   const buildRecommendation = (basisUsed: "diameter" | "volume"): SourceEvaluationOutcome => ({
     recommendationSourceId: sourceId,
     state: "RECOMMENDATION",
-    recommendation: {
-      matchedRuleId: rule.ruleId,
-      matchedRevisionId: rule.revisionId,
-      clinicalEndpoint: rule.recommendation.clinicalEndpoint,
-      intervals: rule.recommendation.intervals,
-      rationale: rule.recommendation.rationale,
-      provenance: rule.provenance,
-      measurementBasisUsed: basisUsed,
-    },
+    recommendation: buildRecommendationPayload(rule, basisUsed),
   });
 
   const outOfScope = (basisUsed: "diameter" | "volume"): SourceEvaluationOutcome => ({
@@ -70,29 +122,60 @@ function evaluateAtomicRule(
   });
 
   if (rule.measurementBasis === "diameter") {
+    // issue #20: a rule that requires a specific measurement convention bypasses the plain
+    // nodule_size_mm presence check entirely and instead looks up a convention-bound measurement
+    // -- a plain lookup-then-equality operation, never a rounding/normalization/derivation step.
+    if (rule.measurementConventionId !== undefined) {
+      const requiredId = rule.measurementConventionId;
+      const matched = input.nodule_diameter_measurements?.find((m) => m.conventionId === requiredId);
+      if (!matched) {
+        const suppliedIds = input.nodule_diameter_measurements?.map((m) => m.conventionId) ?? [];
+        const reason =
+          `Measurement convention required by this rule ("${requiredId}") was not confirmed by ` +
+          `the Clinical Input State: ` +
+          (suppliedIds.length === 0
+            ? "no convention-bound diameter measurements were supplied."
+            : `supplied convention id(s): ${suppliedIds.join(", ")}.`);
+        return { rule, outcome: { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason } };
+      }
+      const shadowedInput: ClinicalInputState = { ...input, nodule_size_mm: matched.valueMm };
+      const result = evaluateConditions(rule.diameterConditions!, shadowedInput);
+      if (!result.allFieldsPresent) {
+        return { rule, outcome: insufficientInput(result.missingFields) };
+      }
+      return { rule, outcome: result.matched ? buildRecommendation("diameter") : outOfScope("diameter") };
+    }
+
     if (input.nodule_size_mm === undefined) {
       return {
-        recommendationSourceId: sourceId,
-        state: "INSUFFICIENT_INPUT",
-        reason: "Diameter is required for this source and was not supplied.",
+        rule,
+        outcome: {
+          recommendationSourceId: sourceId,
+          state: "INSUFFICIENT_INPUT",
+          reason: "Diameter is required for this source and was not supplied.",
+        },
       };
     }
     const result = evaluateConditions(rule.diameterConditions!, input);
     if (!result.allFieldsPresent) {
-      return insufficientInput(result.missingFields);
+      return { rule, outcome: insufficientInput(result.missingFields) };
     }
-    return result.matched ? buildRecommendation("diameter") : outOfScope("diameter");
+    return { rule, outcome: result.matched ? buildRecommendation("diameter") : outOfScope("diameter") };
   }
 
-  // volume-preferred
+  // volume-preferred (issue #20: untouched -- measurement-convention gating applies only to the
+  // diameter basis in this slice)
   const hasVolume = input.nodule_volume_mm3 !== undefined;
   const hasDiameter = input.nodule_size_mm !== undefined;
 
   if (!hasVolume && !hasDiameter) {
     return {
-      recommendationSourceId: sourceId,
-      state: "INSUFFICIENT_INPUT",
-      reason: "Neither diameter nor volume was supplied.",
+      rule,
+      outcome: {
+        recommendationSourceId: sourceId,
+        state: "INSUFFICIENT_INPUT",
+        reason: "Neither diameter nor volume was supplied.",
+      },
     };
   }
 
@@ -103,7 +186,7 @@ function evaluateAtomicRule(
   const basisEval = hasVolume ? volumeEval! : diameterEval!;
 
   if (!basisEval.allFieldsPresent) {
-    return insufficientInput(basisEval.missingFields);
+    return { rule, outcome: insufficientInput(basisEval.missingFields) };
   }
 
   const matched = basisEval.matched;
@@ -125,12 +208,43 @@ function evaluateAtomicRule(
     };
   }
 
-  return outcome;
+  return { rule, outcome };
+}
+
+/**
+ * issue #20: evaluate-all-then-classify across every Atomic Clinical Rule for one source. Zero
+ * matches with sufficient input -> OUTSIDE_CURRENT_RULESET_SCOPE (unchanged meaning); exactly
+ * one match -> today's RECOMMENDATION dispatch, unchanged; more than one match -> throws
+ * AmbiguousRuleMatchError rather than guessing. Any rule reporting INSUFFICIENT_INPUT takes
+ * precedence, since its own match/no-match status could not even be determined.
+ */
+function evaluateAtomicRulesForSource(
+  rules: AtomicClinicalRuleRevision[],
+  input: ClinicalInputState,
+): SourceEvaluationOutcome {
+  const results = rules.map((rule) => evaluateSingleAtomicRule(rule, input));
+
+  const insufficient = results.find((r) => r.outcome.state === "INSUFFICIENT_INPUT");
+  if (insufficient) return insufficient.outcome;
+
+  const matched = results.filter((r) => r.outcome.state === "RECOMMENDATION");
+  if (matched.length > 1) {
+    throw new AmbiguousRuleMatchError(
+      rules[0].recommendationSourceId,
+      matched.map((r) => r.rule),
+    );
+  }
+  if (matched.length === 1) return matched[0].outcome;
+
+  // Zero matches, none insufficient: every rule individually reported
+  // OUTSIDE_CURRENT_RULESET_SCOPE. Any one of them (deterministically, the first) is the
+  // representative final outcome -- their reason text does not depend on which specific rule.
+  return results[0].outcome;
 }
 
 function evaluateSource(
   applicability: SourceApplicabilityRevision,
-  atomicRule: AtomicClinicalRuleRevision,
+  atomicRules: AtomicClinicalRuleRevision[],
   input: ClinicalInputState,
 ): SourceEvaluationOutcome {
   const appResult = evaluateConditions(applicability.conditions, input);
@@ -151,7 +265,7 @@ function evaluateSource(
     };
   }
 
-  return evaluateAtomicRule(atomicRule, input);
+  return evaluateAtomicRulesForSource(atomicRules, input);
 }
 
 /**
@@ -196,8 +310,8 @@ export function evaluate(
   const applicabilityRules = release.revisions.filter(isSourceApplicability);
   const atomicRules = release.revisions.filter(isAtomicClinicalRule);
 
-  // Only sources with BOTH an Approved Source Applicability Rule and an Approved Atomic
-  // Clinical Rule in the Active Release are evaluated at all. BTS, having neither, is
+  // Only sources with BOTH an Approved Source Applicability Rule and at least one Approved
+  // Atomic Clinical Rule in the Active Release are evaluated at all. BTS, having neither, is
   // simply absent from the Active Release and produces no Source Evaluation Outcome.
   const sourceIds = [...new Set(applicabilityRules.map((r) => r.recommendationSourceId))];
 
@@ -205,28 +319,16 @@ export function evaluate(
     const applicability = applicabilityRules.find(
       (r) => r.recommendationSourceId === sourceId,
     )!;
-    // PHASE 2 TECH DEBT: .find() picks at most one Atomic Clinical Rule per source, matching
-    // Phase 1's approved scope (exactly one size bucket per source: S3 5-<8mm, Fleischner
-    // 6-8mm). Additional size buckets per source (e.g. S3's own >=8mm pathway, explicitly out
-    // of Phase 1 scope per issue #7) will need multiple Atomic Clinical Rules per source here,
-    // each matched independently and the first/only match selected -- not implemented now
-    // because Phase 1 has no Approved rule content that needs it.
-    const atomicRule = atomicRules.find((r) => r.recommendationSourceId === sourceId);
-    if (!atomicRule) continue;
+    const sourceAtomicRules = atomicRules.filter((r) => r.recommendationSourceId === sourceId);
+    if (sourceAtomicRules.length === 0) continue;
 
-    const outcome = evaluateSource(applicability, atomicRule, input);
+    const outcome = evaluateSource(applicability, sourceAtomicRules, input);
     trace.sourceEvaluationOutcomes.push(outcome);
 
     if (outcome.state === "RECOMMENDATION" && outcome.recommendation) {
       trace.recommendationSet.push({
         recommendationSourceId: outcome.recommendationSourceId,
-        matchedRuleId: outcome.recommendation.matchedRuleId,
-        matchedRevisionId: outcome.recommendation.matchedRevisionId,
-        clinicalEndpoint: outcome.recommendation.clinicalEndpoint,
-        intervals: outcome.recommendation.intervals,
-        rationale: outcome.recommendation.rationale,
-        provenance: outcome.recommendation.provenance,
-        measurementBasisUsed: outcome.recommendation.measurementBasisUsed,
+        ...outcome.recommendation,
       });
     }
   }

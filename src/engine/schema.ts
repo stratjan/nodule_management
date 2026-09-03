@@ -26,11 +26,11 @@ export const localSopSnapshotSchema = z.object({
   originalLanguage: z.string().min(1),
 });
 
-// ADR-0009/0010's fixed condition vocabulary — nothing beyond eq/gte/lt/lte, no functions,
+// ADR-0009/0010's fixed condition vocabulary — nothing beyond eq/gte/gt/lt/lte, no functions,
 // no expression strings, no OR/NOT.
 const conditionSchema = z.object({
   field: z.string().min(1),
-  op: z.enum(["eq", "gte", "lt", "lte"]),
+  op: z.enum(["eq", "gte", "gt", "lt", "lte"]),
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
 
@@ -39,26 +39,75 @@ const ruleRevisionBaseSchema = z.object({
   revisionId: z.string().min(1),
   approvalStatus: approvalStatusSchema,
   approvalEvent: approvalEventSchema.optional(),
-  provenance: provenanceSchema,
 });
 
-export const pathwayGateRevisionSchema = ruleRevisionBaseSchema.extend({
-  kind: z.literal("pathway-gate"),
-  clinicalPathwayId: z.string().min(1),
-  conditions: z.array(conditionSchema).min(1),
-});
+export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
+  .extend({
+    kind: z.literal("pathway-gate"),
+    clinicalPathwayId: z.string().min(1),
+    conditions: z.array(conditionSchema).min(1),
+    provenance: provenanceSchema,
+  })
+  .strict();
 
-export const sourceApplicabilityRevisionSchema = ruleRevisionBaseSchema.extend({
-  kind: z.literal("source-applicability"),
-  recommendationSourceId: z.string().min(1),
-  conditions: z.array(conditionSchema).min(1),
-});
+export const sourceApplicabilityRevisionSchema = ruleRevisionBaseSchema
+  .extend({
+    kind: z.literal("source-applicability"),
+    recommendationSourceId: z.string().min(1),
+    conditions: z.array(conditionSchema).min(1),
+    provenance: provenanceSchema,
+  })
+  .strict();
 
-const recommendationContentSchema = z.object({
-  clinicalEndpoint: z.string().min(1),
-  intervals: z.array(z.string().min(1)).min(1),
-  rationale: z.string().min(1),
-});
+// issue #20: closed, machine-readable measurement-convention vocabulary -- mirrors
+// MeasurementConventionId in types.ts. Extend both together only when a rule actually needs a
+// second convention.
+const measurementConventionIdSchema = z.enum(["fleischner-2017-average-diameter"]);
+
+// issue #20: exactly two timing forms, never a third -- a non-empty stated interval list, or an
+// explicit "not specified by source" marker. Discriminated on `kind` since this is a fresh type
+// with no legacy shape to stay compatible with.
+const clinicalActionTimingSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("specified"), intervals: z.array(z.string().min(1)).min(1) }).strict(),
+  z.object({ kind: z.literal("not-specified-by-source") }).strict(),
+]);
+
+const clinicalActionSchema = z
+  .object({
+    label: z.string().min(1),
+    timing: clinicalActionTimingSchema,
+  })
+  .strict();
+
+const legacyRecommendationContentSchema = z
+  .object({
+    clinicalEndpoint: z.string().min(1),
+    intervals: z.array(z.string().min(1)).min(1),
+    rationale: z.string().min(1),
+  })
+  .strict();
+
+const structuredRecommendationContentSchema = z
+  .object({
+    actions: z.array(clinicalActionSchema).min(1),
+    rationale: z.string().min(1),
+  })
+  .strict();
+
+// issue #20: exactly one canonical recommendation representation per Rule Revision. Each member
+// is `.strict()`, so an object carrying keys from BOTH forms fails both branches and the union
+// as a whole -- "declares both" and "declares neither" are rejected without a separate refine.
+const recommendationContentSchema = z.union([
+  legacyRecommendationContentSchema,
+  structuredRecommendationContentSchema,
+]);
+
+const provenanceAnchorSchema = z
+  .object({
+    role: z.string().min(1),
+    provenance: provenanceSchema,
+  })
+  .strict();
 
 export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   kind: z.literal("atomic-clinical-rule"),
@@ -66,7 +115,14 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   measurementBasis: z.enum(["diameter", "volume-preferred"]),
   diameterConditions: z.array(conditionSchema).optional(),
   volumeConditions: z.array(conditionSchema).optional(),
+  measurementConventionId: measurementConventionIdSchema.optional(),
   recommendation: recommendationContentSchema,
+  // issue #20: exactly one of provenance (single, legacy) / provenanceAnchors (multi-anchor) --
+  // both optional here, enforced exactly-one-present by the cross-field refine below, following
+  // this file's existing pattern (see the diameterConditions-required refine) rather than a
+  // tagged union, so unmodified legacy files need no new tag field to keep validating.
+  provenance: provenanceSchema.optional(),
+  provenanceAnchors: z.array(provenanceAnchorSchema).min(1).optional(),
 });
 
 // discriminatedUnion requires each member to be a plain ZodObject (not a refined ZodEffects),
@@ -95,7 +151,17 @@ export const ruleRevisionSchema = z
   .refine(
     (rule) => rule.approvalStatus !== "Approved" || rule.approvalEvent !== undefined,
     "an Approved Rule Revision must carry an explicit approvalEvent (by, at)",
-  );
+  )
+  // issue #20: exactly one canonical provenance representation on an atomic-clinical-rule --
+  // single `provenance` XOR `provenanceAnchors`, never both, never neither. Scoped to
+  // atomic-clinical-rule only; pathway-gate/source-applicability keep their own required
+  // singular `provenance`, declared directly on their own schemas above, untouched by this check.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule") return true;
+    const hasSingle = rule.provenance !== undefined;
+    const hasMultiAnchor = rule.provenanceAnchors !== undefined;
+    return hasSingle !== hasMultiAnchor;
+  }, "an atomic-clinical-rule must declare exactly one of provenance (single) or provenanceAnchors (multi-anchor), never both, never neither");
 
 export const ruleSetReleaseSchema = z.object({
   releaseId: z.string().min(1),

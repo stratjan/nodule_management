@@ -24,6 +24,7 @@ const ruleFiles = [
   "clinical/rules/applicability/fleischner-applicability.json",
   "clinical/rules/recommendations/s3-5to8mm.json",
   "clinical/rules/recommendations/fleischner-6to8mm.json",
+  "clinical/rules/recommendations/fleischner-gt8to30mm.json",
 ];
 
 function loadRevision(relativePath: string): RuleRevision {

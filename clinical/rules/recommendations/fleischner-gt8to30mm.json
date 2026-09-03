@@ -1,0 +1,63 @@
+{
+  "ruleId": "ACR-FLEISCHNER-GT8TO30MM",
+  "revisionId": "ACR-FLEISCHNER-GT8TO30MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-02" },
+  "provenanceAnchors": [
+    {
+      "role": "management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), >8mm row"
+      }
+    },
+    {
+      "role": "scope",
+      "provenance": {
+        "sourceDocument": "Fleischner Society Glossary of Terms for Thoracic Imaging",
+        "version": "2024",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Nodule/mass boundary definition (mass: >=30mm; nodule: <30mm)"
+      }
+    },
+    {
+      "role": "measurement",
+      "provenance": {
+        "sourceDocument": "MacMahon H, et al. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images",
+        "version": "2017 (Fleischner Society)",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Nodule size/diameter measurement definition"
+      }
+    }
+  ],
+  "measurementBasis": "diameter",
+  "measurementConventionId": "fleischner-2017-average-diameter",
+  "diameterConditions": [
+    { "field": "nodule_size_mm", "op": "gt", "value": 8 },
+    { "field": "nodule_size_mm", "op": "lte", "value": 30 }
+  ],
+  "recommendation": {
+    "actions": [
+      {
+        "label": "CT surveillance",
+        "timing": { "kind": "specified", "intervals": ["3 months"] }
+      },
+      {
+        "label": "PET-CT",
+        "timing": { "kind": "not-specified-by-source" }
+      },
+      {
+        "label": "Biopsy/tissue sampling",
+        "timing": { "kind": "not-specified-by-source" }
+      }
+    ],
+    "rationale": "Fleischner recommends, for a solitary, solid, incidental pulmonary nodule greater than 8mm and up to 30mm in diameter (Fleischner's own nodule/mass boundary), in a patient >=35 years old with no known malignancy history and not immunocompromised: CT surveillance at 3 months, or further characterization by PET-CT, or biopsy/tissue sampling -- presented as coequal options with no source-stated ranking between them."
+  }
+}

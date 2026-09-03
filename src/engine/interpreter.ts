@@ -1,4 +1,4 @@
-// The custom minimal interpreter (ADR-0009): evaluates the fixed eq/gte/lt/lte, AND-only
+// The custom minimal interpreter (ADR-0009): evaluates the fixed eq/gte/gt/lt/lte, AND-only
 // condition vocabulary against a Clinical Input State. No functions, no expression strings,
 // no dynamic eval — every operator is explicit, deterministic, and side-effect free.
 import type { Condition, ClinicalInputState } from "./types";
@@ -17,6 +17,8 @@ function evaluateOne(condition: Condition, actual: string | number | boolean): b
       return actual === condition.value;
     case "gte":
       return (actual as number) >= (condition.value as number);
+    case "gt":
+      return (actual as number) > (condition.value as number);
     case "lt":
       return (actual as number) < (condition.value as number);
     case "lte":
