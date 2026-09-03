@@ -36,9 +36,22 @@ export function App() {
 
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => ({ ...prev, [id]: value }));
+    // issue #20 review: the affirmation is only ever valid for the diameter value it was given
+    // for -- any edit to that value (including clearing it) invalidates a prior affirmation, so
+    // it must never silently carry over and get tagged onto a new, unaffirmed value.
+    if (id === "nodule_size_mm") {
+      setFleischnerConventionConfirmed(false);
+    }
   };
 
   const hasMeasurement = input.nodule_size_mm !== undefined || input.nodule_volume_mm3 !== undefined;
+
+  // issue #20 review: Fleischner's average-diameter convention resolves to a whole-mm value
+  // before a clinician would ever enter it -- a fractional diameter can never legitimately be
+  // affirmed under this convention, so the affirmation control is only offered for whole-mm
+  // values.
+  const isWholeMmDiameter =
+    input.nodule_size_mm !== undefined && Number.isInteger(input.nodule_size_mm);
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
   const canEvaluate = hasMeasurement;
@@ -50,14 +63,15 @@ export function App() {
 
   const handleEvaluate = () => {
     // issue #20: the Fleischner-bound convention-checked measurement is populated only when the
-    // clinician has explicitly affirmed it -- never inferred from nodule_size_mm alone. The
-    // legacy nodule_size_mm value used by S3/BTS is untouched either way.
+    // clinician has explicitly affirmed it for a whole-mm value -- never inferred from
+    // nodule_size_mm alone, and never emitted for a fractional value the convention could never
+    // have produced. The legacy nodule_size_mm value used by S3/BTS is untouched either way.
     const evaluationInput: ClinicalInputState =
-      fleischnerConventionConfirmed && input.nodule_size_mm !== undefined
+      fleischnerConventionConfirmed && isWholeMmDiameter
         ? {
             ...input,
             nodule_diameter_measurements: [
-              { valueMm: input.nodule_size_mm, conventionId: "fleischner-2017-average-diameter" },
+              { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" },
             ],
           }
         : input;
@@ -136,14 +150,18 @@ export function App() {
             <input
               type="checkbox"
               checked={fleischnerConventionConfirmed}
-              disabled={input.nodule_size_mm === undefined}
+              disabled={!isWholeMmDiameter}
               onChange={(e) => setFleischnerConventionConfirmed(e.target.checked)}
             />
             <span>
               The diameter above was measured using Fleischner&apos;s average-diameter convention
               (long-axis + perpendicular short-axis average, same plane, greatest-dimension plane,
-              rounded to the nearest whole mm). Required for a Fleischner recommendation above
-              8mm; leave unchecked if unsure.
+              rounded to the nearest whole mm). Required for any Fleischner recommendation (6mm
+              and above); leave unchecked if unsure.
+              {input.nodule_size_mm !== undefined && !isWholeMmDiameter && (
+                <> Only available for a whole-millimeter diameter -- this convention rounds to the
+                nearest whole mm before entry.</>
+              )}
             </span>
           </label>
           <p>

@@ -56,6 +56,14 @@ interface NumericRange {
  * or an operator outside eq/gte/gt/lte/lt). issue #20: release-time overlap validation only
  * proves overlap for this simple, decidable case -- it never claims to prove non-overlap for
  * anything more complex; that residual is what the runtime ambiguity guard exists to catch.
+ *
+ * Each condition is folded into the running [min, max] bound via a commutative,
+ * order-independent tightening (intersection) step -- applying the same conditions in any order
+ * produces the same result. A tie between an inclusive and an exclusive bound at the same value
+ * always resolves to the stricter (exclusive) bound, since the combined constraint is their AND.
+ * The result may be an empty range (min > max, or min === max with either bound exclusive) when
+ * the conditions are contradictory (e.g. `gte 10` AND `lte 5`) -- callers must treat an empty
+ * range as matching no input, never as "unknown" or "everything".
  */
 function extractNumericRange(conditions: Condition[]): NumericRange | null {
   if (conditions.length === 0) return null;
@@ -65,39 +73,42 @@ function extractNumericRange(conditions: Condition[]): NumericRange | null {
   let max = Infinity;
   let maxInclusive = true;
 
+  const tightenMin = (value: number, inclusive: boolean) => {
+    if (value > min) {
+      min = value;
+      minInclusive = inclusive;
+    } else if (value === min) {
+      minInclusive = minInclusive && inclusive;
+    }
+  };
+  const tightenMax = (value: number, inclusive: boolean) => {
+    if (value < max) {
+      max = value;
+      maxInclusive = inclusive;
+    } else if (value === max) {
+      maxInclusive = maxInclusive && inclusive;
+    }
+  };
+
   for (const c of conditions) {
     if (c.field !== field) return null;
     if (typeof c.value !== "number") return null;
     switch (c.op) {
       case "gte":
-        if (c.value > min || (c.value === min && !minInclusive)) {
-          min = c.value;
-          minInclusive = true;
-        }
+        tightenMin(c.value, true);
         break;
       case "gt":
-        if (c.value > min || (c.value === min && minInclusive)) {
-          min = c.value;
-          minInclusive = false;
-        }
+        tightenMin(c.value, false);
         break;
       case "lte":
-        if (c.value < max || (c.value === max && !maxInclusive)) {
-          max = c.value;
-          maxInclusive = true;
-        }
+        tightenMax(c.value, true);
         break;
       case "lt":
-        if (c.value < max || (c.value === max && maxInclusive)) {
-          max = c.value;
-          maxInclusive = false;
-        }
+        tightenMax(c.value, false);
         break;
       case "eq":
-        min = c.value;
-        max = c.value;
-        minInclusive = true;
-        maxInclusive = true;
+        tightenMin(c.value, true);
+        tightenMax(c.value, true);
         break;
       default:
         return null;
@@ -107,8 +118,17 @@ function extractNumericRange(conditions: Condition[]): NumericRange | null {
   return { field, min, minInclusive, max, maxInclusive };
 }
 
+/** A range with no possible value -- e.g. from contradictory conditions like `gte 10 AND lte 5`.
+ * An empty range can never match any input, so it can never overlap another range either. */
+function isEmptyRange(r: NumericRange): boolean {
+  if (r.min > r.max) return true;
+  if (r.min === r.max && !(r.minInclusive && r.maxInclusive)) return true;
+  return false;
+}
+
 function rangesOverlap(a: NumericRange, b: NumericRange): boolean {
   if (a.field !== b.field) return false;
+  if (isEmptyRange(a) || isEmptyRange(b)) return false;
   const aEndsBeforeB = a.max < b.min || (a.max === b.min && !(a.maxInclusive && b.minInclusive));
   const bEndsBeforeA = b.max < a.min || (b.max === a.min && !(b.maxInclusive && a.minInclusive));
   return !aEndsBeforeB && !bEndsBeforeA;

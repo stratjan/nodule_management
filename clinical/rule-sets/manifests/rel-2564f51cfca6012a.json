@@ -1,6 +1,6 @@
 {
-  "releaseId": "rel-4e3d3835e916b07b",
-  "createdAt": "2026-09-03T06:57:27.874Z",
+  "releaseId": "rel-2564f51cfca6012a",
+  "createdAt": "2026-09-03T11:33:58.299Z",
   "motivatingLocalSopSnapshot": {
     "documentTitle": "SOP-Rundherdmanagement",
     "sourceFilename": "251201 SOP-Rundherdmanagement.docx",
@@ -75,6 +75,7 @@
   ],
   "notes": [
     "BTS is not available in this Rule-Set Release: it has neither a Source Applicability Rule nor an Atomic Clinical Rule of any Approval Status (Draft or Approved) in clinical/rules/. Its absence is explained here, not computed per-evaluation.",
-    "No standalone Local SOP Recommendation is included in this Release; the Local SOP remains the normative source S3/Fleischner rules are derived from and cited against, not an executable Recommendation Source itself in Phase 1."
+    "No standalone Local SOP Recommendation is included in this Release; the Local SOP remains the normative source S3/Fleischner rules are derived from and cited against, not an executable Recommendation Source itself in Phase 1.",
+    "ACR-FLEISCHNER-6TO8MM-r2 (superseding r1) is a documentation correction, not a Local SOP Version change (issue #20): it adds an explicit measurementConventionId declaration and switches from single to multi-anchor provenance. Its recommendation content and diameter thresholds are unchanged from r1."
   ]
 }

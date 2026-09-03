@@ -23,7 +23,7 @@
         "version": "2024",
         "originalLanguage": "English",
         "sourceType": "Source Guideline",
-        "locator": "Nodule/mass boundary definition (mass: >=30mm; nodule: <30mm)"
+        "locator": "Nodule/mass boundary definition (nodule: <=30mm; mass: >30mm)"
       }
     },
     {

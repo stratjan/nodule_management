@@ -1,6 +1,6 @@
 {
-  "releaseId": "rel-4e3d3835e916b07b",
-  "createdAt": "2026-09-03T06:57:27.874Z",
+  "releaseId": "rel-2564f51cfca6012a",
+  "createdAt": "2026-09-03T11:33:58.299Z",
   "revisions": [
     {
       "ruleId": "GR-1",
@@ -286,7 +286,7 @@
             "version": "2024",
             "originalLanguage": "English",
             "sourceType": "Source Guideline",
-            "locator": "Nodule/mass boundary definition (mass: >=30mm; nodule: <30mm)"
+            "locator": "Nodule/mass boundary definition (nodule: <=30mm; mass: >30mm)"
           }
         },
         {

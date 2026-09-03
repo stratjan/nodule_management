@@ -23,7 +23,15 @@ const baseApplicability = {
 
 /** issue #20: the corrected Fleischner 6-8mm rule and the new >8mm rule both require this
  * convention-bound diameter measurement -- kept separate from the legacy, untagged
- * nodule_size_mm the boundary fixtures below already set. */
+ * nodule_size_mm the boundary fixtures below already set.
+ *
+ * Only ever call this with a whole-mm value. Fleischner's average-diameter convention itself
+ * resolves to a whole mm before a clinician would ever enter it (long-axis + perpendicular
+ * short-axis average, rounded to the nearest whole mm) -- a fractional value such as 5.9 or 7.9
+ * can never legitimately carry this convention's tag. Phase 1's original 5.9mm/7.9mm boundary
+ * fixtures predate that requirement; per PR #21 review, they are NOT given a (fabricated)
+ * convention-bound measurement below -- the Fleischner rules correctly report INSUFFICIENT_INPUT
+ * for them instead, since no such measurement could ever exist for a fractional-mm value. */
 function fleischnerMeasurement(valueMm: number) {
   return [{ valueMm, conventionId: "fleischner-2017-average-diameter" as const }];
 }
@@ -45,13 +53,12 @@ describe("size boundaries", () => {
     expect(outcomeFor(trace, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
   });
 
-  it("5.9mm -> 6.0mm: Fleischner flips OUTSIDE_CURRENT_RULESET_SCOPE -> RECOMMENDATION", () => {
+  it("5.9mm: Fleischner reports INSUFFICIENT_INPUT (no valid whole-mm convention-bound measurement is possible); 6.0mm (whole mm, convention affirmed): RECOMMENDATION", () => {
     const at59 = evaluate(
       {
         ...basePathway,
         ...baseApplicability,
         nodule_size_mm: 5.9,
-        nodule_diameter_measurements: fleischnerMeasurement(5.9),
       },
       release,
     );
@@ -64,17 +71,16 @@ describe("size boundaries", () => {
       },
       release,
     );
-    expect(outcomeFor(at59, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+    expect(outcomeFor(at59, "fleischner")?.state).toBe("INSUFFICIENT_INPUT");
     expect(outcomeFor(at60, "fleischner")?.state).toBe("RECOMMENDATION");
   });
 
-  it("7.9mm -> 8.0mm: S3 flips RECOMMENDATION -> OUTSIDE_CURRENT_RULESET_SCOPE; Fleischner stays RECOMMENDATION at 8.0mm", () => {
+  it("7.9mm: S3 RECOMMENDATION (unaffected -- reads raw nodule_size_mm), Fleischner INSUFFICIENT_INPUT (no valid whole-mm convention-bound measurement is possible); 8.0mm (whole mm, convention affirmed): S3 flips OUTSIDE_CURRENT_RULESET_SCOPE, Fleischner RECOMMENDATION", () => {
     const at79 = evaluate(
       {
         ...basePathway,
         ...baseApplicability,
         nodule_size_mm: 7.9,
-        nodule_diameter_measurements: fleischnerMeasurement(7.9),
       },
       release,
     );
@@ -88,6 +94,7 @@ describe("size boundaries", () => {
       release,
     );
     expect(outcomeFor(at79, "s3")?.state).toBe("RECOMMENDATION");
+    expect(outcomeFor(at79, "fleischner")?.state).toBe("INSUFFICIENT_INPUT");
     expect(outcomeFor(at80, "s3")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
     expect(outcomeFor(at80, "fleischner")?.state).toBe("RECOMMENDATION");
     expect(outcomeFor(at80, "fleischner")?.recommendation?.matchedRuleId).toBe(
