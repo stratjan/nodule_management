@@ -24,6 +24,7 @@ const ruleFiles = [
   "clinical/rules/applicability/fleischner-applicability.json",
   "clinical/rules/recommendations/s3-5to8mm.json",
   "clinical/rules/recommendations/fleischner-6to8mm.json",
+  "clinical/rules/recommendations/fleischner-gt8to30mm.json",
 ];
 
 function loadRevision(relativePath: string): RuleRevision {
@@ -67,6 +68,7 @@ const manifest: ReleaseManifest = {
   notes: [
     "BTS is not available in this Rule-Set Release: it has neither a Source Applicability Rule nor an Atomic Clinical Rule of any Approval Status (Draft or Approved) in clinical/rules/. Its absence is explained here, not computed per-evaluation.",
     "No standalone Local SOP Recommendation is included in this Release; the Local SOP remains the normative source S3/Fleischner rules are derived from and cited against, not an executable Recommendation Source itself in Phase 1.",
+    "ACR-FLEISCHNER-6TO8MM-r2 (superseding r1) is a documentation correction, not a Local SOP Version change (issue #20): it adds an explicit measurementConventionId declaration and switches from single to multi-anchor provenance. Its recommendation content and diameter thresholds are unchanged from r1.",
   ],
 };
 releaseManifestSchema.parse(manifest);

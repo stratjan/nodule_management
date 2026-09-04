@@ -9,6 +9,7 @@ import {
   buildRuleSetRelease,
   NonApprovedRevisionError,
   MissingApprovalEventError,
+  OverlappingRuleConditionsError,
 } from "../../src/engine/releaseBuilder";
 import { ruleRevisionSchema } from "../../src/engine/schema";
 import type { RuleRevision } from "../../src/engine/types";
@@ -23,12 +24,19 @@ function loadSyntheticDraftFixture(): RuleRevision {
   return ruleRevisionSchema.parse(raw) as RuleRevision;
 }
 
+function loadSyntheticOverlappingRules(): RuleRevision[] {
+  return ["synthetic-overlapping-rule-a.json", "synthetic-overlapping-rule-b.json"].map((name) => {
+    const raw = JSON.parse(readFileSync(join(__dirname, `../fixtures/${name}`), "utf-8"));
+    return ruleRevisionSchema.parse(raw) as RuleRevision;
+  });
+}
+
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 5 Approved Phase 1 revisions, nothing else, no BTS content", () => {
+  it("includes exactly the 6 Approved revisions (Phase 1 + issue #20's new Fleischner >8mm rule), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(5);
+    expect(release.revisions).toHaveLength(6);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -39,6 +47,7 @@ describe("Rule-Set Release assembly", () => {
     const ruleIds = release.revisions.map((r) => r.ruleId).sort();
     expect(ruleIds).toEqual([
       "ACR-FLEISCHNER-6TO8MM",
+      "ACR-FLEISCHNER-GT8TO30MM",
       "ACR-S3-5TO8MM",
       "GR-1",
       "SAR-FLEISCHNER",
@@ -68,5 +77,16 @@ describe("Rule-Set Release assembly", () => {
     expect(() => buildRuleSetRelease([gateWithoutApprovalEvent, ...rest])).toThrow(
       MissingApprovalEventError,
     );
+  });
+
+  it("rejects two Approved Atomic Clinical Rules for the same source with deterministically overlapping conditions (issue #20)", () => {
+    const revisions = [...loadApprovedPhase1Revisions(), ...loadSyntheticOverlappingRules()];
+    expect(() => buildRuleSetRelease(revisions)).toThrow(OverlappingRuleConditionsError);
+  });
+
+  it("the real Approved Phase-1 set plus the new Fleischner >8mm rule builds successfully (no false-positive overlap between the 6-8mm and >8mm rules)", () => {
+    const revisions = loadApprovedPhase1Revisions();
+    expect(() => buildRuleSetRelease(revisions)).not.toThrow();
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(6);
   });
 });

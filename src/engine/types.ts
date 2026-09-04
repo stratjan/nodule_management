@@ -32,7 +32,7 @@ export interface LocalSopSnapshot {
 }
 
 /** ADR-0009/0010: the fixed, deterministic, side-effect-free condition vocabulary. AND-only, no OR/NOT. */
-export type ConditionOp = "eq" | "gte" | "lt" | "lte";
+export type ConditionOp = "eq" | "gte" | "gt" | "lt" | "lte";
 
 export interface Condition {
   field: string;
@@ -45,37 +45,112 @@ interface RuleRevisionBase {
   revisionId: string;
   approvalStatus: ApprovalStatus;
   approvalEvent?: ApprovalEvent;
-  provenance: Provenance;
 }
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
   clinicalPathwayId: string;
   conditions: Condition[];
+  provenance: Provenance;
 }
 
 export interface SourceApplicabilityRevision extends RuleRevisionBase {
   kind: "source-applicability";
   recommendationSourceId: string;
   conditions: Condition[];
+  provenance: Provenance;
 }
 
-export interface RecommendationContent {
+/**
+ * A closed, machine-readable measurement-convention vocabulary (issue #20) -- deliberately not
+ * an unconstrained string. Extend this union (and the matching Zod enum in schema.ts) only when
+ * a rule actually needs a second convention; nothing today does.
+ */
+export type MeasurementConventionId = "fleischner-2017-average-diameter";
+
+/**
+ * One measured diameter value bound to exactly one MeasurementConventionId (issue #20). Kept
+ * separate from the generic, untagged ClinicalInputState.nodule_size_mm -- tagging that shared
+ * scalar with a source-specific convention would make every other consumer of it (S3, BTS)
+ * implicitly inherit a convention claim nothing verified for them.
+ */
+export interface DiameterMeasurement {
+  valueMm: number;
+  conventionId: MeasurementConventionId;
+}
+
+/** issue #20: exactly two forms -- a stated, non-empty interval list, or an explicit marker that
+ * the source states no timing. Never a third form, never an empty/omitted value standing in for
+ * "not specified". */
+export type ClinicalActionTiming =
+  | { kind: "specified"; intervals: string[] }
+  | { kind: "not-specified-by-source" };
+
+export interface ClinicalAction {
+  label: string;
+  timing: ClinicalActionTiming;
+}
+
+export interface LegacyRecommendationContent {
   clinicalEndpoint: string;
   intervals: string[];
   rationale: string;
 }
 
+/** issue #20: a bounded, flat list of named alternatives -- not a decision tree. `actions` is
+ * non-empty; no primary/secondary ordering unless a source text states one. */
+export interface StructuredRecommendationContent {
+  actions: ClinicalAction[];
+  rationale: string;
+}
+
+/**
+ * Exactly one canonical representation per Rule Revision (issue #20) -- legacy XOR structured,
+ * never both, never neither. Distinguished structurally (by which keys are present), not by a
+ * tag field, so the unmodified Phase-1 legacy shape needs no edit to keep validating.
+ */
+export type RecommendationContent = LegacyRecommendationContent | StructuredRecommendationContent;
+
+export function isStructuredRecommendation(
+  content: RecommendationContent,
+): content is StructuredRecommendationContent {
+  return "actions" in content;
+}
+
+export interface ProvenanceAnchor {
+  role: string;
+  provenance: Provenance;
+}
+
+/**
+ * Exactly one canonical provenance representation per Atomic Clinical Rule Revision (issue #20)
+ * -- single XOR multi-anchor, never both, never neither. Scoped to Atomic Clinical Rules only;
+ * PathwayGateRevision and SourceApplicabilityRevision keep their own required singular
+ * `provenance`, untouched by this union.
+ */
+export type ProvenanceCarrier = { provenance: Provenance } | { provenanceAnchors: ProvenanceAnchor[] };
+
+export function hasMultiAnchorProvenance(
+  carrier: ProvenanceCarrier,
+): carrier is { provenanceAnchors: ProvenanceAnchor[] } {
+  return "provenanceAnchors" in carrier;
+}
+
 export type MeasurementBasis = "diameter" | "volume-preferred";
 
-export interface AtomicClinicalRuleRevision extends RuleRevisionBase {
+export type AtomicClinicalRuleRevision = RuleRevisionBase & {
   kind: "atomic-clinical-rule";
   recommendationSourceId: string;
   measurementBasis: MeasurementBasis;
   diameterConditions?: Condition[];
   volumeConditions?: Condition[];
+  /** issue #20: which measurement convention this rule's diameterConditions require. Optional --
+   * absent for S3/BTS and any rule with no verified convention requirement; when present,
+   * evaluate() looks the value up in ClinicalInputState.nodule_diameter_measurements instead of
+   * reading the generic nodule_size_mm directly. */
+  measurementConventionId?: MeasurementConventionId;
   recommendation: RecommendationContent;
-}
+} & ProvenanceCarrier;
 
 export type RuleRevision =
   | PathwayGateRevision
@@ -117,6 +192,11 @@ export interface ClinicalInputState {
   nodule_count?: number;
   nodule_size_mm?: number;
   nodule_volume_mm3?: number;
+  /** issue #20: convention-bound diameter measurements, kept separate from the generic, untagged
+   * nodule_size_mm above -- see DiameterMeasurement. Populated only when a clinician has
+   * explicitly provided or affirmed a value under a specific measurement convention; never a
+   * blind copy of nodule_size_mm. */
+  nodule_diameter_measurements?: DiameterMeasurement[];
   age?: number;
   known_malignancy_history?: boolean;
   immunocompromised?: boolean;
@@ -130,15 +210,17 @@ export type SourceEvaluationOutcomeState =
   | "OUTSIDE_CURRENT_RULESET_SCOPE"
   | "INSUFFICIENT_INPUT";
 
-export interface RecommendationPayload {
-  matchedRuleId: string;
-  matchedRevisionId: string;
-  clinicalEndpoint: string;
-  intervals: string[];
-  rationale: string;
-  provenance: Provenance;
-  measurementBasisUsed: "diameter" | "volume";
-}
+/**
+ * Carries whichever recommendation form and provenance form the matched Atomic Clinical Rule
+ * declared (issue #20) -- never both, never a legacy/structured or single/multi-anchor blend
+ * synthesized by the engine.
+ */
+export type RecommendationPayload = RecommendationContent &
+  ProvenanceCarrier & {
+    matchedRuleId: string;
+    matchedRevisionId: string;
+    measurementBasisUsed: "diameter" | "volume";
+  };
 
 export interface SourceEvaluationOutcome {
   recommendationSourceId: string;
@@ -151,16 +233,7 @@ export interface SourceEvaluationOutcome {
 
 // --- Recommendation Set (CONTEXT.md: RECOMMENDATION-state entries only) ---
 
-export interface Recommendation {
-  recommendationSourceId: string;
-  matchedRuleId: string;
-  matchedRevisionId: string;
-  clinicalEndpoint: string;
-  intervals: string[];
-  rationale: string;
-  provenance: Provenance;
-  measurementBasisUsed: "diameter" | "volume";
-}
+export type Recommendation = RecommendationPayload & { recommendationSourceId: string };
 
 export type RecommendationSet = Recommendation[];
 

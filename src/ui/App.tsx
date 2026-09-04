@@ -6,6 +6,7 @@ import { activeManifest } from "../data/activeManifest";
 import { pathwayFields, measurementFields, applicabilityFields } from "../workflow/fields";
 import { canContinuePastPathwayStep, isNoduleCountOutOfScope } from "../workflow/pathwayNavigation";
 import { FieldInput } from "./FieldInput";
+import { RecommendationView } from "./RecommendationView";
 
 type FieldValue = string | number | boolean | undefined;
 type Step = "pathway" | "clinical-details" | "results";
@@ -27,12 +28,30 @@ export function App() {
   const [input, setInput] = useState<ClinicalInputState>({});
   const [trace, setTrace] = useState<DecisionExecutionTrace | null>(null);
   const [showTrace, setShowTrace] = useState(false);
+  // issue #20: a minimal, explicit affirmation tied to the existing diameter field -- never a
+  // blind copy of it. Kept as UI-only state, not a ClinicalInputState field itself; only
+  // translated into a convention-bound nodule_diameter_measurements entry when the clinician has
+  // actually checked it, at evaluation time.
+  const [fleischnerConventionConfirmed, setFleischnerConventionConfirmed] = useState(false);
 
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => ({ ...prev, [id]: value }));
+    // issue #20 review: the affirmation is only ever valid for the diameter value it was given
+    // for -- any edit to that value (including clearing it) invalidates a prior affirmation, so
+    // it must never silently carry over and get tagged onto a new, unaffirmed value.
+    if (id === "nodule_size_mm") {
+      setFleischnerConventionConfirmed(false);
+    }
   };
 
   const hasMeasurement = input.nodule_size_mm !== undefined || input.nodule_volume_mm3 !== undefined;
+
+  // issue #20 review: Fleischner's average-diameter convention resolves to a whole-mm value
+  // before a clinician would ever enter it -- a fractional diameter can never legitimately be
+  // affirmed under this convention, so the affirmation control is only offered for whole-mm
+  // values.
+  const isWholeMmDiameter =
+    input.nodule_size_mm !== undefined && Number.isInteger(input.nodule_size_mm);
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
   const canEvaluate = hasMeasurement;
@@ -43,7 +62,20 @@ export function App() {
   };
 
   const handleEvaluate = () => {
-    const result = evaluate(input, activeRelease);
+    // issue #20: the Fleischner-bound convention-checked measurement is populated only when the
+    // clinician has explicitly affirmed it for a whole-mm value -- never inferred from
+    // nodule_size_mm alone, and never emitted for a fractional value the convention could never
+    // have produced. The legacy nodule_size_mm value used by S3/BTS is untouched either way.
+    const evaluationInput: ClinicalInputState =
+      fleischnerConventionConfirmed && isWholeMmDiameter
+        ? {
+            ...input,
+            nodule_diameter_measurements: [
+              { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" },
+            ],
+          }
+        : input;
+    const result = evaluate(evaluationInput, activeRelease);
     setTrace(result);
     setStep("results");
   };
@@ -52,6 +84,7 @@ export function App() {
     setInput({});
     setTrace(null);
     setShowTrace(false);
+    setFleischnerConventionConfirmed(false);
     setStep("pathway");
   };
 
@@ -113,6 +146,24 @@ export function App() {
               />
             ))}
           </div>
+          <label className="field field-checkbox">
+            <input
+              type="checkbox"
+              checked={fleischnerConventionConfirmed}
+              disabled={!isWholeMmDiameter}
+              onChange={(e) => setFleischnerConventionConfirmed(e.target.checked)}
+            />
+            <span>
+              The diameter above was measured using Fleischner&apos;s average-diameter convention
+              (long-axis + perpendicular short-axis average, same plane, greatest-dimension plane,
+              rounded to the nearest whole mm). Required for any Fleischner recommendation (6mm
+              and above); leave unchecked if unsure.
+              {input.nodule_size_mm !== undefined && !isWholeMmDiameter && (
+                <> Only available for a whole-millimeter diameter -- this convention rounds to the
+                nearest whole mm before entry.</>
+              )}
+            </span>
+          </label>
           <p>
             Age, malignancy history, and immunocompromise status are used independently by each
             guideline. Leaving one blank only affects the guideline(s) that need it.
@@ -155,21 +206,7 @@ export function App() {
                   <p className="outcome-state">{OUTCOME_LABELS[outcome.state]}</p>
                   {outcome.reason && <p className="outcome-reason">{outcome.reason}</p>}
                   {outcome.state === "RECOMMENDATION" && outcome.recommendation && (
-                    <div className="recommendation">
-                      <p>
-                        <strong>{outcome.recommendation.clinicalEndpoint}</strong>:{" "}
-                        {outcome.recommendation.intervals.join(", ")}
-                      </p>
-                      <p className="rationale">{outcome.recommendation.rationale}</p>
-                      <p className="provenance">
-                        Provenance: {outcome.recommendation.provenance.sourceDocument} (
-                        {outcome.recommendation.provenance.version}),{" "}
-                        {outcome.recommendation.provenance.locator}
-                      </p>
-                      <p className="basis">
-                        Measurement basis used: {outcome.recommendation.measurementBasisUsed}
-                      </p>
-                    </div>
+                    <RecommendationView recommendation={outcome.recommendation} />
                   )}
                   {outcome.measurementDiscordance && (
                     <p className="notice">
