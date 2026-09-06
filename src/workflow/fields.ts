@@ -31,7 +31,10 @@ export const pathwayFields: FieldDef[] = [
     id: "nodule_morphology",
     label: "Nodule morphology",
     type: "select",
-    options: [{ value: "solid", label: "Solid" }],
+    options: [
+      { value: "solid", label: "Solid" },
+      { value: "pure-ground-glass", label: "Pure ground-glass / non-solid" },
+    ],
   },
   {
     id: "assessment_context",

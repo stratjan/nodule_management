@@ -32,11 +32,11 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 6 Approved revisions (Phase 1 + issue #20's new Fleischner >8mm rule), nothing else, no BTS content", () => {
+  it("includes exactly the 9 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(6);
+    expect(release.revisions).toHaveLength(9);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -47,9 +47,12 @@ describe("Rule-Set Release assembly", () => {
     const ruleIds = release.revisions.map((r) => r.ruleId).sort();
     expect(ruleIds).toEqual([
       "ACR-FLEISCHNER-6TO8MM",
+      "ACR-FLEISCHNER-GGN-GTE6MM",
+      "ACR-FLEISCHNER-GGN-LT6MM",
       "ACR-FLEISCHNER-GT8TO30MM",
       "ACR-S3-5TO8MM",
       "GR-1",
+      "GR-2",
       "SAR-FLEISCHNER",
       "SAR-S3",
     ]);
@@ -84,9 +87,9 @@ describe("Rule-Set Release assembly", () => {
     expect(() => buildRuleSetRelease(revisions)).toThrow(OverlappingRuleConditionsError);
   });
 
-  it("the real Approved Phase-1 set plus the new Fleischner >8mm rule builds successfully (no false-positive overlap between the 6-8mm and >8mm rules)", () => {
+  it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, and pure-GGN rules across pathways)", () => {
     const revisions = loadApprovedPhase1Revisions();
     expect(() => buildRuleSetRelease(revisions)).not.toThrow();
-    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(6);
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(9);
   });
 });

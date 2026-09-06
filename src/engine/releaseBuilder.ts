@@ -4,7 +4,22 @@
 // Node-only tooling (uses node:crypto); not imported by the browser UI runtime, which loads
 // a prebuilt release JSON artifact instead.
 import { createHash } from "node:crypto";
-import type { ApprovalEvent, AtomicClinicalRuleRevision, Condition, RuleRevision, RuleSetRelease } from "./types";
+import type {
+  ApprovalEvent,
+  AtomicClinicalRuleRevision,
+  ClinicalPathwayId,
+  Condition,
+  PathwayGateRevision,
+  RuleRevision,
+  RuleSetRelease,
+} from "./types";
+
+function isPathwayGate(r: RuleRevision): r is PathwayGateRevision {
+  return r.kind === "pathway-gate";
+}
+function isAtomicClinicalRule(r: RuleRevision): r is AtomicClinicalRuleRevision {
+  return r.kind === "atomic-clinical-rule";
+}
 
 export class NonApprovedRevisionError extends Error {
   constructor(public readonly rejected: RuleRevision[]) {
@@ -39,6 +54,90 @@ export class OverlappingRuleConditionsError extends Error {
         `have deterministically overlapping match conditions on field "${field}".`,
     );
     this.name = "OverlappingRuleConditionsError";
+  }
+}
+
+/**
+ * issue #17: a bound Atomic Clinical Rule's clinicalPathwayId references no governed
+ * PathwayGateRevision present in this Release -- a rule bound to a mistyped or retired pathway
+ * id would otherwise silently become permanently unreachable rather than being caught at build
+ * time.
+ */
+export class UnknownClinicalPathwayIdError extends Error {
+  constructor(
+    public readonly offending: AtomicClinicalRuleRevision[],
+    public readonly knownGates: PathwayGateRevision[],
+  ) {
+    super(
+      `Release assembly rejected: ${offending.length} Atomic Clinical Rule(s) declare a ` +
+        `clinicalPathwayId with no matching Pathway Gate in this Release: ` +
+        offending.map((r) => `${r.ruleId}@${r.revisionId} (${r.clinicalPathwayId})`).join(", ") +
+        `. Known pathways: ${knownGates.map((g) => g.clinicalPathwayId).join(", ") || "(none)"}.`,
+    );
+    this.name = "UnknownClinicalPathwayIdError";
+  }
+}
+
+/**
+ * issue #17 (Q8 historical-Release compatibility): once a Release contains more than one
+ * governed Pathway Gate, an unbound (clinicalPathwayId absent) Atomic Clinical Rule's implicit
+ * "belongs to the only pathway" fallback becomes ambiguous -- refused at build time rather than
+ * guessed at evaluation time, the same fail-closed posture as AmbiguousPathwayMatchError. A
+ * single-gate Release is unaffected: an unbound rule there is unambiguous (see
+ * effectiveClinicalPathwayId below) and remains valid, so historical single-pathway Release
+ * artifacts keep parsing and executing unchanged.
+ */
+export class UnboundAtomicRuleInMultiPathwayReleaseError extends Error {
+  constructor(public readonly offending: AtomicClinicalRuleRevision[]) {
+    super(
+      `Release assembly rejected: this Release has more than one Pathway Gate, so every Atomic ` +
+        `Clinical Rule must declare an explicit clinicalPathwayId. ${offending.length} rule(s) ` +
+        `do not: ${offending.map((r) => `${r.ruleId}@${r.revisionId}`).join(", ")}.`,
+    );
+    this.name = "UnboundAtomicRuleInMultiPathwayReleaseError";
+  }
+}
+
+/**
+ * issue #17 (Q8/effectiveClinicalPathwayId): the pathway a rule is actually governed under for
+ * release-time purposes. Zero gates: no fallback is invented (an already-invalid-release/
+ * evaluate-time case, unchanged). Exactly one gate: an unbound rule belongs to that sole pathway
+ * -- the historical-compatibility case. More than one gate: every surviving rule (unbound ones
+ * having already been rejected by assertPathwayBindingsValid) carries its own explicit id.
+ */
+function effectiveClinicalPathwayId(
+  rule: AtomicClinicalRuleRevision,
+  gates: PathwayGateRevision[],
+): ClinicalPathwayId | undefined {
+  if (rule.clinicalPathwayId) return rule.clinicalPathwayId;
+  if (gates.length === 1) return gates[0].clinicalPathwayId;
+  return undefined;
+}
+
+/**
+ * issue #17: validates Atomic Clinical Rule -> Pathway Gate bindings before any overlap check
+ * runs, so effectiveClinicalPathwayId (above) can safely assume every rule it sees in a
+ * multi-gate Release is already explicitly bound. Throws UnknownClinicalPathwayIdError for a
+ * bound-but-unrecognized pathway id, or UnboundAtomicRuleInMultiPathwayReleaseError when a
+ * multi-gate Release contains any unbound rule.
+ */
+function assertPathwayBindingsValid(revisions: RuleRevision[]): void {
+  const gates = revisions.filter(isPathwayGate);
+  const atomicRules = revisions.filter(isAtomicClinicalRule);
+  const gateIds = new Set(gates.map((g) => g.clinicalPathwayId));
+
+  const unknownBound = atomicRules.filter(
+    (r) => r.clinicalPathwayId !== undefined && !gateIds.has(r.clinicalPathwayId),
+  );
+  if (unknownBound.length > 0) {
+    throw new UnknownClinicalPathwayIdError(unknownBound, gates);
+  }
+
+  if (gates.length > 1) {
+    const unbound = atomicRules.filter((r) => r.clinicalPathwayId === undefined);
+    if (unbound.length > 0) {
+      throw new UnboundAtomicRuleInMultiPathwayReleaseError(unbound);
+    }
   }
 }
 
@@ -135,24 +234,27 @@ function rangesOverlap(a: NumericRange, b: NumericRange): boolean {
 }
 
 /**
- * Release-time semantic validation (issue #20), scoped by Recommendation Source only:
- * AtomicClinicalRuleRevision carries no clinicalPathwayId today, and the Active Rule-Set Release
- * currently spans only one Clinical Pathway (GR-1), so grouping by source alone is already
- * equivalent in scope. Rejects the Release whenever two Approved Atomic Clinical Rules for the
- * same source have deterministically overlapping diameterConditions or volumeConditions.
+ * Release-time semantic validation, scoped by (effectiveClinicalPathwayId, recommendationSourceId)
+ * (issue #17) -- never by source alone (issue #20's original scope, since the Release then spanned
+ * only one Clinical Pathway) and never by the raw, optional clinicalPathwayId field (which would
+ * let a legacy-unbound rule and an explicitly-bound rule of the very same sole pathway land in two
+ * different groups purely due to a metadata difference with no clinical meaning, masking a real
+ * overlap). Rejects the Release whenever two Approved Atomic Clinical Rules for the same effective
+ * pathway and source have deterministically overlapping diameterConditions or volumeConditions.
  */
 function assertNoOverlappingAtomicRules(revisions: RuleRevision[]): void {
-  const atomicRules = revisions.filter(
-    (r): r is AtomicClinicalRuleRevision => r.kind === "atomic-clinical-rule",
-  );
-  const bySource = new Map<string, AtomicClinicalRuleRevision[]>();
+  const gates = revisions.filter(isPathwayGate);
+  const atomicRules = revisions.filter(isAtomicClinicalRule);
+  const byGroup = new Map<string, AtomicClinicalRuleRevision[]>();
   for (const rule of atomicRules) {
-    const group = bySource.get(rule.recommendationSourceId) ?? [];
+    const pathwayKey = effectiveClinicalPathwayId(rule, gates) ?? "";
+    const key = `${pathwayKey}::${rule.recommendationSourceId}`;
+    const group = byGroup.get(key) ?? [];
     group.push(rule);
-    bySource.set(rule.recommendationSourceId, group);
+    byGroup.set(key, group);
   }
 
-  for (const rules of bySource.values()) {
+  for (const rules of byGroup.values()) {
     for (let i = 0; i < rules.length; i++) {
       for (let j = i + 1; j < rules.length; j++) {
         for (const key of ["diameterConditions", "volumeConditions"] as const) {
@@ -205,13 +307,17 @@ export function computeReleaseId(revisions: RuleRevision[]): string {
 /**
  * Assembles a Rule-Set Release from a set of Rule Revisions. Throws NonApprovedRevisionError
  * if any revision is not Approved, MissingApprovalEventError if an Approved revision has no
- * explicit approval event, or OverlappingRuleConditionsError (issue #20) if two Approved Atomic
- * Clinical Rules for the same Recommendation Source have deterministically overlapping match
- * conditions — release assembly must physically refuse all three (ADR-0007), never rely on a
- * runtime filter (or a later non-null assertion) applied after the fact. The approval checks are
- * independent of, and in addition to, ruleRevisionSchema's own approval-event refinement —
- * buildRuleSetRelease enforces every invariant itself rather than trusting that every caller
- * validated with the schema first.
+ * explicit approval event, UnknownClinicalPathwayIdError (issue #17) if a bound Atomic Clinical
+ * Rule references no Pathway Gate present in the Release, UnboundAtomicRuleInMultiPathwayReleaseError
+ * (issue #17) if a Release with more than one Pathway Gate contains any unbound Atomic Clinical
+ * Rule, or OverlappingRuleConditionsError (issue #20, rescoped by issue #17 to
+ * (effectiveClinicalPathwayId, recommendationSourceId)) if two Approved Atomic Clinical Rules for
+ * the same effective pathway and source have deterministically overlapping match conditions —
+ * release assembly must physically refuse all five (ADR-0007), never rely on a runtime filter (or
+ * a later non-null assertion) applied after the fact. The approval checks are independent of, and
+ * in addition to, ruleRevisionSchema's own approval-event refinement — buildRuleSetRelease
+ * enforces every invariant itself rather than trusting that every caller validated with the
+ * schema first.
  */
 export function buildRuleSetRelease(
   revisions: RuleRevision[],
@@ -227,6 +333,7 @@ export function buildRuleSetRelease(
     throw new MissingApprovalEventError(missingApprovalEvent);
   }
 
+  assertPathwayBindingsValid(revisions);
   assertNoOverlappingAtomicRules(revisions);
 
   return {

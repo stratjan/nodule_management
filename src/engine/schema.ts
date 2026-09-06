@@ -41,10 +41,18 @@ const ruleRevisionBaseSchema = z.object({
   approvalEvent: approvalEventSchema.optional(),
 });
 
+// issue #17: closed, machine-readable Clinical Pathway vocabulary -- mirrors ClinicalPathwayId
+// in types.ts. Extend both together only when a new Clinical Pathway Gate is actually governed
+// and Approved.
+const clinicalPathwayIdSchema = z.enum([
+  "incidental-solitary-solid-initial",
+  "incidental-solitary-pure-ggn-initial",
+]);
+
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
   .extend({
     kind: z.literal("pathway-gate"),
-    clinicalPathwayId: z.string().min(1),
+    clinicalPathwayId: clinicalPathwayIdSchema,
     conditions: z.array(conditionSchema).min(1),
     provenance: provenanceSchema,
   })
@@ -94,12 +102,51 @@ const structuredRecommendationContentSchema = z
   })
   .strict();
 
-// issue #20: exactly one canonical recommendation representation per Rule Revision. Each member
-// is `.strict()`, so an object carrying keys from BOTH forms fails both branches and the union
-// as a whole -- "declares both" and "declares neither" are rejected without a separate refine.
+// issue #17: a positive closed semantic marker -- noRoutineFollowUp must be the literal `true`,
+// never a free-text clinicalEndpoint, and never merely inferred from the absence of
+// intervals/actions (which would let an arbitrary endpoint with no timing data pass as this form).
+const noRoutineFollowUpRecommendationContentSchema = z
+  .object({
+    noRoutineFollowUp: z.literal(true),
+    rationale: z.string().min(1),
+  })
+  .strict();
+
+// issue #17: deliberately narrower than clinicalActionTimingSchema -- pinned to the single
+// "specified" form with non-empty intervals, since the source is definite about both persistence
+// steps' timing; "not-specified-by-source" and an empty intervals array are both explicitly
+// rejected here (final architecture review, P2).
+const persistenceSurveillanceTimingSchema = z
+  .object({ kind: z.literal("specified"), intervals: z.array(z.string().min(1)).min(1) })
+  .strict();
+
+const persistenceSurveillanceStepSchema = z
+  .object({
+    label: z.string().min(1),
+    timing: persistenceSurveillanceTimingSchema,
+  })
+  .strict();
+
+// issue #17: exactly two fixed, named steps -- not a generic steps array or predicate/branching
+// language. Kept as its own sibling form specifically so StructuredRecommendationContent.actions
+// (issue #20) keeps meaning "a bounded flat list of coequal alternatives" unchanged.
+const persistenceSurveillanceRecommendationContentSchema = z
+  .object({
+    persistenceConfirmation: persistenceSurveillanceStepSchema,
+    ifPersistent: persistenceSurveillanceStepSchema,
+    rationale: z.string().min(1),
+  })
+  .strict();
+
+// issue #20/#17: exactly one canonical recommendation representation per Rule Revision. Each
+// member is `.strict()`, so an object carrying keys from more than one form fails every other
+// branch and the union as a whole -- "declares more than one" and "declares none" are rejected
+// without a separate refine.
 const recommendationContentSchema = z.union([
   legacyRecommendationContentSchema,
   structuredRecommendationContentSchema,
+  noRoutineFollowUpRecommendationContentSchema,
+  persistenceSurveillanceRecommendationContentSchema,
 ]);
 
 const provenanceAnchorSchema = z
@@ -112,6 +159,11 @@ const provenanceAnchorSchema = z
 export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   kind: z.literal("atomic-clinical-rule"),
   recommendationSourceId: z.string().min(1),
+  // issue #17: optional -- see ClinicalPathwayId's doc comment in types.ts. Historical Rule
+  // Revisions authored before this field existed must remain parseable, unmutated; release-time
+  // validation (releaseBuilder.ts) enforces it in practice once a Release has more than one
+  // Pathway Gate.
+  clinicalPathwayId: clinicalPathwayIdSchema.optional(),
   measurementBasis: z.enum(["diameter", "volume-preferred"]),
   diameterConditions: z.array(conditionSchema).optional(),
   volumeConditions: z.array(conditionSchema).optional(),

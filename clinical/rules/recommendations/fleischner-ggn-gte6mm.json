@@ -1,0 +1,55 @@
+{
+  "ruleId": "ACR-FLEISCHNER-GGN-GTE6MM",
+  "revisionId": "ACR-FLEISCHNER-GGN-GTE6MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-06" },
+  "provenanceAnchors": [
+    {
+      "role": "management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), pure ground-glass row (Local SOP states \">6mm\"; see clinical/sources/local-sop.json findings and Release Manifest notes for the governed >=6mm correction)"
+      }
+    },
+    {
+      "role": "boundary",
+      "provenance": {
+        "sourceDocument": "MacMahon H, et al. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images",
+        "version": "2017 (Fleischner Society)",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Pure ground-glass nodule <6mm / >=6mm management table"
+      }
+    },
+    {
+      "role": "measurement",
+      "provenance": {
+        "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+        "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Figure 3 (pure ground-glass nodule measurement example, applying the Figure 2 average-diameter approach) and Figure 2 (average-diameter definition)"
+      }
+    }
+  ],
+  "measurementBasis": "diameter",
+  "measurementConventionId": "fleischner-2017-average-diameter",
+  "diameterConditions": [{ "field": "nodule_size_mm", "op": "gte", "value": 6 }],
+  "recommendation": {
+    "persistenceConfirmation": {
+      "label": "CT to confirm persistence",
+      "timing": { "kind": "specified", "intervals": ["6-12 months"] }
+    },
+    "ifPersistent": {
+      "label": "CT surveillance",
+      "timing": { "kind": "specified", "intervals": ["every 2 years until 5 years"] }
+    },
+    "rationale": "Fleischner recommends, for a solitary, pure ground-glass/non-solid, incidental pulmonary nodule 6mm or greater in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised: a CT at 6-12 months to confirm persistence, and, only if the nodule is confirmed persistent, continued CT surveillance every 2 years until 5 years. The Local SOP's own wording states this boundary as '>6mm'; the governed executable boundary is '>=6mm', per explicit clinical HITL approval treating the Local SOP wording as an imprecise transcription of the underlying Fleischner 2017 source table (see clinical/sources/local-sop.json findings)."
+  }
+}

@@ -1,11 +1,38 @@
-import type { ClinicalActionTiming, Provenance, RecommendationPayload } from "../engine/types";
-import { hasMultiAnchorProvenance, isStructuredRecommendation } from "../engine/types";
+import type {
+  ClinicalActionTiming,
+  PersistenceSurveillanceStep,
+  Provenance,
+  RecommendationPayload,
+} from "../engine/types";
+import {
+  hasMultiAnchorProvenance,
+  isNoRoutineFollowUpRecommendation,
+  isPersistenceSurveillanceRecommendation,
+  isStructuredRecommendation,
+} from "../engine/types";
 
 function TimingView({ timing }: { timing: ClinicalActionTiming }) {
   if (timing.kind === "specified") {
     return <>{timing.intervals.join(", ")}</>;
   }
   return <span className="timing-not-specified">Not specified by source</span>;
+}
+
+/** issue #17: `ifPersistent` must render visibly distinct from an unconditional step -- the
+ * qualifier is UI-authored render copy, never embedded in the rule's own authored `label`. */
+function PersistenceStepView({
+  step,
+  conditional,
+}: {
+  step: PersistenceSurveillanceStep;
+  conditional: boolean;
+}) {
+  return (
+    <li className="clinical-action">
+      <strong>{step.label}</strong>: {step.timing.intervals.join(", ")}
+      {conditional && <span className="conditional-qualifier"> (only if persistent)</span>}
+    </li>
+  );
 }
 
 function ProvenanceLine({ label, provenance }: { label: string; provenance: Provenance }) {
@@ -17,9 +44,11 @@ function ProvenanceLine({ label, provenance }: { label: string; provenance: Prov
 }
 
 /**
- * issue #20: renders whichever recommendation and provenance form the matched Atomic Clinical
- * Rule actually declared, without collapsing structured actions or multi-anchor provenance back
- * into one string, and without inventing a primary/secondary hierarchy the source doesn't state.
+ * issue #20/#17: renders whichever recommendation and provenance form the matched Atomic Clinical
+ * Rule actually declared, without collapsing structured actions, the no-routine-follow-up marker,
+ * the persistence-surveillance sequence, or multi-anchor provenance back into one string, and
+ * without inventing a primary/secondary hierarchy or a false equal-weight look the source doesn't
+ * state.
  */
 export function RecommendationView({ recommendation }: { recommendation: RecommendationPayload }) {
   return (
@@ -31,6 +60,15 @@ export function RecommendationView({ recommendation }: { recommendation: Recomme
               <strong>{action.label}</strong>: <TimingView timing={action.timing} />
             </li>
           ))}
+        </ul>
+      ) : isNoRoutineFollowUpRecommendation(recommendation) ? (
+        <p>
+          <strong>No routine follow-up</strong>
+        </p>
+      ) : isPersistenceSurveillanceRecommendation(recommendation) ? (
+        <ul className="action-list">
+          <PersistenceStepView step={recommendation.persistenceConfirmation} conditional={false} />
+          <PersistenceStepView step={recommendation.ifPersistent} conditional={true} />
         </ul>
       ) : (
         <p>

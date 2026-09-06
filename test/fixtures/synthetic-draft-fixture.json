@@ -10,6 +10,6 @@
     "sourceType": "Synthetic test fixture",
     "locator": "test/fixtures/synthetic-draft-fixture.json"
   },
-  "clinicalPathwayId": "test-only-not-a-real-pathway",
+  "clinicalPathwayId": "incidental-solitary-solid-initial",
   "conditions": [{ "field": "test_only_field", "op": "eq", "value": "test_only_value" }]
 }

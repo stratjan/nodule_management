@@ -183,6 +183,125 @@ describe("issue #20: gt operator, structured recommendation, measurement convent
   });
 });
 
+describe("issue #17: closed clinicalPathwayId, no-routine-follow-up, persistence-surveillance", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const GGN_LT6_PATH = "clinical/rules/recommendations/fleischner-ggn-lt6mm.json";
+  const GGN_GTE6_PATH = "clinical/rules/recommendations/fleischner-ggn-gte6mm.json";
+  const GATE_PATH = "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json";
+  const GGN_GATE_PATH = "clinical/rules/pathway/gr-2-incidental-solitary-pure-ggn-initial.json";
+
+  it("accepts both governed clinicalPathwayId values on a Pathway Gate", () => {
+    expect(() => ruleRevisionSchema.parse(loadRaw(GATE_PATH))).not.toThrow();
+    expect(() => ruleRevisionSchema.parse(loadRaw(GGN_GATE_PATH))).not.toThrow();
+  });
+
+  it("rejects an unrecognized clinicalPathwayId on a Pathway Gate", () => {
+    const raw = loadRaw(GGN_GATE_PATH);
+    raw.clinicalPathwayId = "some-other-unrecognized-pathway";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts an Atomic Clinical Rule without clinicalPathwayId (optional, for historical Release compatibility)", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    delete raw.clinicalPathwayId;
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects an Atomic Clinical Rule's clinicalPathwayId when not in the closed enum", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    raw.clinicalPathwayId = "some-other-unrecognized-pathway";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts the no-routine-follow-up form with the literal noRoutineFollowUp: true", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    expect(raw.recommendation.noRoutineFollowUp).toBe(true);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects a no-routine-follow-up form with noRoutineFollowUp: false", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    raw.recommendation.noRoutineFollowUp = false;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a no-routine-follow-up-shaped object missing the noRoutineFollowUp literal (only rationale present)", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    raw.recommendation = { rationale: raw.recommendation.rationale };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a no-routine-follow-up form also carrying intervals or actions", () => {
+    const withIntervals = loadRaw(GGN_LT6_PATH);
+    withIntervals.recommendation.intervals = ["test-only"];
+    expect(() => ruleRevisionSchema.parse(withIntervals)).toThrow();
+
+    const withActions = loadRaw(GGN_LT6_PATH);
+    withActions.recommendation.actions = [];
+    expect(() => ruleRevisionSchema.parse(withActions)).toThrow();
+  });
+
+  it("accepts the persistence-surveillance form with exactly persistenceConfirmation, ifPersistent, and rationale", () => {
+    const raw = loadRaw(GGN_GTE6_PATH);
+    expect(raw.recommendation.persistenceConfirmation).toBeDefined();
+    expect(raw.recommendation.ifPersistent).toBeDefined();
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects a persistence-surveillance form missing ifPersistent", () => {
+    const raw = loadRaw(GGN_GTE6_PATH);
+    delete raw.recommendation.ifPersistent;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a persistence-surveillance form missing persistenceConfirmation", () => {
+    const raw = loadRaw(GGN_GTE6_PATH);
+    delete raw.recommendation.persistenceConfirmation;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects not-specified-by-source timing on either persistence-surveillance step (final architecture review, P2)", () => {
+    const onConfirmation = loadRaw(GGN_GTE6_PATH);
+    onConfirmation.recommendation.persistenceConfirmation.timing = { kind: "not-specified-by-source" };
+    expect(() => ruleRevisionSchema.parse(onConfirmation)).toThrow();
+
+    const onIfPersistent = loadRaw(GGN_GTE6_PATH);
+    onIfPersistent.recommendation.ifPersistent.timing = { kind: "not-specified-by-source" };
+    expect(() => ruleRevisionSchema.parse(onIfPersistent)).toThrow();
+  });
+
+  it("rejects an empty intervals array on either persistence-surveillance step (final architecture review, P2)", () => {
+    const onConfirmation = loadRaw(GGN_GTE6_PATH);
+    onConfirmation.recommendation.persistenceConfirmation.timing.intervals = [];
+    expect(() => ruleRevisionSchema.parse(onConfirmation)).toThrow();
+
+    const onIfPersistent = loadRaw(GGN_GTE6_PATH);
+    onIfPersistent.recommendation.ifPersistent.timing.intervals = [];
+    expect(() => ruleRevisionSchema.parse(onIfPersistent)).toThrow();
+  });
+
+  it("a RecommendationContent declaring none of the four forms is rejected", () => {
+    const raw = loadRaw(GGN_LT6_PATH);
+    raw.recommendation = {};
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("the unmodified real fleischner-6to8mm.json, fleischner-gt8to30mm.json, and s3-5to8mm.json (now with clinicalPathwayId) still parse under the evolved schema", () => {
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-6to8mm.json")),
+    ).not.toThrow();
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-gt8to30mm.json")),
+    ).not.toThrow();
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/s3-5to8mm.json")),
+    ).not.toThrow();
+  });
+});
+
 describe("assembled Release / Manifest / Active pointer", () => {
   it("a Release built from the Approved revisions validates against ruleSetReleaseSchema", () => {
     const release = buildRuleSetRelease(loadApprovedPhase1Revisions());

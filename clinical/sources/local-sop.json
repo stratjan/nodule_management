@@ -14,6 +14,7 @@
   "findings": [
     "Local SOP's own \"Action at Time 0\" row uses the hybrid, imprecise \"5/6-8mm\" category -- not sufficiently precise for an independent executable rule without a further institutional clinical decision. No standalone Local SOP Recommendation is authored in Phase 1.",
     "No separate Local SOP applicability model is authored in Phase 1 -- only per-source (S3, Fleischner) applicability is evaluated.",
-    "The Local SOP source document itself appears procedurally unreleased (blank effective/release-date fields, unsigned)."
+    "The Local SOP source document itself appears procedurally unreleased (blank effective/release-date fields, unsigned).",
+    "Local SOP states the pure ground-glass/non-solid nodule management boundary as \">6mm\"; this is treated (issue #17 clinical HITL approval) as an imprecise transcription of the underlying Fleischner 2017 source table, and the governed executable boundary for ACR-FLEISCHNER-GGN-GTE6MM is \">=6mm\" (6.0mm belongs to the surveillance bucket). This approval applies only to the Fleischner Recommendation Source for this pathway and does not generalize to S3/BTS or other subsolid-nodule sources. The Local SOP wording is preserved verbatim here, never silently rewritten to match the executable rule."
   ]
 }
