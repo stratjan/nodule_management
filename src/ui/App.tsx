@@ -98,7 +98,7 @@ export function App() {
       <header>
         <h1>Colibri Nodule Management</h1>
         <p className="subtitle">
-          Incidental, solitary, solid pulmonary nodule &mdash; initial assessment (S3 + Fleischner)
+          Incidental, solitary pulmonary nodule &mdash; initial assessment (S3 + Fleischner)
         </p>
       </header>
 
@@ -156,8 +156,8 @@ export function App() {
             <span>
               The diameter above was measured using Fleischner&apos;s average-diameter convention
               (long-axis + perpendicular short-axis average, same plane, greatest-dimension plane,
-              rounded to the nearest whole mm). Required for any Fleischner recommendation (6mm
-              and above); leave unchecked if unsure.
+              rounded to the nearest whole mm). Required for any Fleischner recommendation at any
+              diameter, regardless of nodule morphology or pathway; leave unchecked if unsure.
               {input.nodule_size_mm !== undefined && !isWholeMmDiameter && (
                 <> Only available for a whole-millimeter diameter -- this convention rounds to the
                 nearest whole mm before entry.</>
@@ -191,14 +191,14 @@ export function App() {
         <section aria-label="Results">
           <h2>3. Source Evaluation Outcomes</h2>
 
-          {!trace.clinicalPathwayGate.passed && (
+          {trace.pathwaySelection.state !== "MATCHED" && (
             <p className="notice notice-block">
-              This Clinical Input State did not confirm the pathway this tool covers. No
-              guideline was evaluated.
+              This Clinical Input State did not confirm a pathway this tool covers. No guideline
+              was evaluated.
             </p>
           )}
 
-          {trace.clinicalPathwayGate.passed && (
+          {trace.pathwaySelection.state === "MATCHED" && (
             <ul className="outcome-list">
               {trace.sourceEvaluationOutcomes.map((outcome) => (
                 <li key={outcome.recommendationSourceId} className={`outcome outcome-${outcome.state}`}>

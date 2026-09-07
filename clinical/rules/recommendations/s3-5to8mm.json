@@ -1,10 +1,11 @@
 {
   "ruleId": "ACR-S3-5TO8MM",
-  "revisionId": "ACR-S3-5TO8MM-r1",
+  "revisionId": "ACR-S3-5TO8MM-r2",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "s3",
+  "clinicalPathwayId": "incidental-solitary-solid-initial",
   "approvalStatus": "Approved",
-  "approvalEvent": { "by": "stratjan", "at": "2026-08-31" },
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-06" },
   "provenance": {
     "sourceDocument": "Local SOP",
     "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",

@@ -28,7 +28,10 @@ const gate = rev({
   approvalStatus: "Approved",
   approvalEvent: { by: "test-fixture", at: "2026-01-01" },
   provenance: syntheticProvenance,
-  clinicalPathwayId: "test-only-ambiguity-pathway",
+  // clinicalPathwayId must be one of the real closed-enum values (issue #17) -- this release is
+  // built standalone in this test, never combined with the real GR-1/GR-2 release, so reusing a
+  // real pathway id here is inert and does not affect any real clinical evaluation.
+  clinicalPathwayId: "incidental-solitary-solid-initial",
   conditions: [{ field: "test_only_gate_field", op: "eq", value: "yes" }],
 });
 

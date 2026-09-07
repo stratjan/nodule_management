@@ -47,9 +47,17 @@ interface RuleRevisionBase {
   approvalEvent?: ApprovalEvent;
 }
 
+/**
+ * A closed, machine-readable Clinical Pathway vocabulary (issue #17) -- deliberately not an
+ * unconstrained string, mirroring the MeasurementConventionId precedent (issue #20). Extend this
+ * union (and the matching Zod enum in schema.ts) only when a new Clinical Pathway Gate is
+ * actually governed and Approved.
+ */
+export type ClinicalPathwayId = "incidental-solitary-solid-initial" | "incidental-solitary-pure-ggn-initial";
+
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
-  clinicalPathwayId: string;
+  clinicalPathwayId: ClinicalPathwayId;
   conditions: Condition[];
   provenance: Provenance;
 }
@@ -105,16 +113,68 @@ export interface StructuredRecommendationContent {
 }
 
 /**
- * Exactly one canonical representation per Rule Revision (issue #20) -- legacy XOR structured,
- * never both, never neither. Distinguished structurally (by which keys are present), not by a
- * tag field, so the unmodified Phase-1 legacy shape needs no edit to keep validating.
+ * Exactly one canonical representation per Rule Revision -- legacy XOR structured XOR
+ * no-routine-follow-up XOR persistence-surveillance (the latter two added by issue #17), never
+ * more than one. Distinguished structurally (by which keys are present), not by a tag field, so
+ * the unmodified Phase-1 legacy shape needs no edit to keep validating.
  */
-export type RecommendationContent = LegacyRecommendationContent | StructuredRecommendationContent;
+export type RecommendationContent =
+  | LegacyRecommendationContent
+  | StructuredRecommendationContent
+  | NoRoutineFollowUpRecommendationContent
+  | PersistenceSurveillanceRecommendationContent;
+
+/**
+ * issue #17: a positive, closed semantic marker for "the source states a management decision of
+ * no routine follow-up" -- never a free-text clinicalEndpoint, and never represented by the mere
+ * absence of intervals/actions (which would let any arbitrary endpoint with no timing data pass
+ * as this form). `noRoutineFollowUp` is always the literal `true`.
+ */
+export interface NoRoutineFollowUpRecommendationContent {
+  noRoutineFollowUp: true;
+  rationale: string;
+}
+
+/** issue #17: one named step of a PersistenceSurveillanceRecommendationContent. Timing is pinned
+ * to the single `"specified"` form with non-empty intervals -- deliberately narrower than the
+ * generic ClinicalActionTiming union, since the source is definite about both steps' timing;
+ * `"not-specified-by-source"` would misrepresent that. */
+export interface PersistenceSurveillanceStep {
+  label: string;
+  timing: { kind: "specified"; intervals: string[] };
+}
+
+/**
+ * issue #17: a small, closed, bounded sibling form for exactly one clinical fact pattern -- an
+ * unconditional persistence-confirmation step followed by a second step performed only if
+ * persistence is confirmed. Deliberately NOT represented via generic ClinicalAction[] (which
+ * would silently change StructuredRecommendationContent.actions' existing meaning from "coequal
+ * alternatives" to "sometimes a sequence") and NOT a generic steps array or predicate/branching
+ * language -- exactly these two named steps, never a third, never added to without a new,
+ * equally-scoped review.
+ */
+export interface PersistenceSurveillanceRecommendationContent {
+  persistenceConfirmation: PersistenceSurveillanceStep;
+  ifPersistent: PersistenceSurveillanceStep;
+  rationale: string;
+}
 
 export function isStructuredRecommendation(
   content: RecommendationContent,
 ): content is StructuredRecommendationContent {
   return "actions" in content;
+}
+
+export function isNoRoutineFollowUpRecommendation(
+  content: RecommendationContent,
+): content is NoRoutineFollowUpRecommendationContent {
+  return "noRoutineFollowUp" in content;
+}
+
+export function isPersistenceSurveillanceRecommendation(
+  content: RecommendationContent,
+): content is PersistenceSurveillanceRecommendationContent {
+  return "persistenceConfirmation" in content;
 }
 
 export interface ProvenanceAnchor {
@@ -141,6 +201,12 @@ export type MeasurementBasis = "diameter" | "volume-preferred";
 export type AtomicClinicalRuleRevision = RuleRevisionBase & {
   kind: "atomic-clinical-rule";
   recommendationSourceId: string;
+  /** issue #17: which Clinical Pathway this rule belongs to. Optional at the schema level so
+   * immutable historical single-pathway Release artifacts (authored before this field existed)
+   * remain parseable, unmutated -- see releaseBuilder.ts's effective-pathway-id/historical-
+   * compatibility contract. Required in practice once a Release has more than one Pathway Gate,
+   * enforced at release-build time, not via the type system. */
+  clinicalPathwayId?: ClinicalPathwayId;
   measurementBasis: MeasurementBasis;
   diameterConditions?: Condition[];
   volumeConditions?: Condition[];
@@ -239,18 +305,39 @@ export type RecommendationSet = Recommendation[];
 
 // --- Decision Execution Trace ---
 
+/** issue #17: three-valued Clinical Pathway Gate classification. A supplied value that already
+ * contradicts a gate's own conditions makes it NOT_MATCHED even if another referenced field is
+ * still missing -- a missing field must never mask an already-definitive mismatch. INDETERMINATE
+ * only when nothing supplied contradicts yet at least one referenced field is still missing. */
+export type ClinicalPathwayGateState = "MATCHED" | "NOT_MATCHED" | "INDETERMINATE";
+
+export interface ClinicalPathwayGateResult {
+  ruleId: string;
+  revisionId: string;
+  clinicalPathwayId: ClinicalPathwayId;
+  state: ClinicalPathwayGateState;
+  missingFields: string[];
+}
+
+/**
+ * issue #17: the pathway-selection summary computed from every governed gate's own result.
+ * "More than one gate matched" is deliberately not a value here -- like AmbiguousRuleMatchError,
+ * it is thrown as AmbiguousPathwayMatchError, never encoded as a clinical outcome.
+ */
+export type PathwaySelection =
+  | { state: "MATCHED"; clinicalPathwayId: ClinicalPathwayId }
+  | { state: "INSUFFICIENT_INPUT" }
+  | { state: "NO_PATHWAY_MATCHED" };
+
 export interface DecisionExecutionTrace {
   activeRuleSetReleaseId: string;
   engineVersion: string;
   schemaVersion: string;
   normalizedClinicalInputState: ClinicalInputState;
-  clinicalPathwayGate: {
-    ruleId: string;
-    revisionId: string;
-    passed: boolean;
-    missingFields: string[];
-  };
-  clinicalPathwayId?: string;
+  /** One entry per governed PathwayGateRevision in the Active Rule-Set Release, always all of
+   * them -- nothing is discarded regardless of which pathway (if any) matched (issue #17). */
+  clinicalPathwayGates: ClinicalPathwayGateResult[];
+  pathwaySelection: PathwaySelection;
   sourceEvaluationOutcomes: SourceEvaluationOutcome[];
   recommendationSet: RecommendationSet;
 }

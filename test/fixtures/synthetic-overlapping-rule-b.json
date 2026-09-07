@@ -3,6 +3,7 @@
   "revisionId": "TEST-SYNTHETIC-OVERLAP-B-r1",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "test-only-synthetic-source",
+  "clinicalPathwayId": "incidental-solitary-solid-initial",
   "approvalStatus": "Approved",
   "approvalEvent": { "by": "test-fixture", "at": "2026-01-01" },
   "provenance": {

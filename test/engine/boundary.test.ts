@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { evaluate } from "../../src/engine/evaluate";
 import { loadTestRelease } from "../helpers/loadTestRelease";
 import type { ClinicalInputState } from "../../src/engine/types";
+import {
+  isNoRoutineFollowUpRecommendation,
+  isPersistenceSurveillanceRecommendation,
+} from "../../src/engine/types";
 
 const release = loadTestRelease();
 
@@ -219,7 +223,7 @@ describe("Clinical Pathway Gate", () => {
       nodule_size_mm: 7,
     };
     const trace = evaluate(input, release);
-    expect(trace.clinicalPathwayGate.passed).toBe(false);
+    expect(trace.pathwaySelection.state).not.toBe("MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
     expect(trace.recommendationSet).toHaveLength(0);
   });
@@ -233,7 +237,7 @@ describe("Clinical Pathway Gate", () => {
       nodule_size_mm: 7,
     };
     const trace = evaluate(input, release);
-    expect(trace.clinicalPathwayGate.passed).toBe(false);
+    expect(trace.pathwaySelection.state).not.toBe("MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
@@ -246,7 +250,7 @@ describe("Clinical Pathway Gate", () => {
       nodule_size_mm: 7,
     };
     const trace = evaluate(input, release);
-    expect(trace.clinicalPathwayGate.passed).toBe(false);
+    expect(trace.pathwaySelection.state).not.toBe("MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
@@ -259,7 +263,7 @@ describe("Clinical Pathway Gate", () => {
       nodule_size_mm: 7,
     };
     const trace = evaluate(input, release);
-    expect(trace.clinicalPathwayGate.passed).toBe(false);
+    expect(trace.pathwaySelection.state).not.toBe("MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
@@ -271,7 +275,7 @@ describe("Clinical Pathway Gate", () => {
       nodule_size_mm: 7,
     };
     const trace = evaluate(input, release);
-    expect(trace.clinicalPathwayGate.passed).toBe(false);
+    expect(trace.pathwaySelection.state).not.toBe("MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 });
@@ -409,5 +413,118 @@ describe("measurement-convention enforcement (issue #20)", () => {
     expect((outcomeFor(withMeasurement, "s3")?.recommendation as any)?.clinicalEndpoint).toBe(
       (outcomeFor(without, "s3")?.recommendation as any)?.clinicalEndpoint,
     );
+  });
+});
+
+// issue #17: pure ground-glass / non-solid pathway (GR-2), Fleischner-only.
+const ggnBasePathway = {
+  nodule_morphology: "pure-ground-glass",
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 1,
+} as const;
+
+describe("pure ground-glass pathway (issue #17)", () => {
+  it("5mm: ACR-FLEISCHNER-GGN-LT6MM matches, explicit no-routine-follow-up semantics", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-pure-ggn-initial",
+    });
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-GGN-LT6MM");
+
+    const recommendation = fleischner?.recommendation;
+    expect(recommendation && isNoRoutineFollowUpRecommendation(recommendation)).toBe(true);
+    expect((recommendation as any).noRoutineFollowUp).toBe(true);
+    expect((recommendation as any).intervals).toBeUndefined();
+    expect((recommendation as any).actions).toBeUndefined();
+    expect((recommendation as any).clinicalEndpoint).toBeUndefined();
+  });
+
+  it("6mm exactly: ACR-FLEISCHNER-GGN-GTE6MM matches (surveillance bucket, per HITL)", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 6,
+      nodule_diameter_measurements: fleischnerMeasurement(6),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-GGN-GTE6MM");
+  });
+
+  it("10mm (representative >6mm case): same ACR-FLEISCHNER-GGN-GTE6MM rule applies", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-GGN-GTE6MM");
+  });
+
+  it("the persistence-surveillance form carries exactly the two named, non-empty, specified-only steps", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 6,
+      nodule_diameter_measurements: fleischnerMeasurement(6),
+    };
+    const trace = evaluate(input, release);
+    const recommendation = outcomeFor(trace, "fleischner")?.recommendation;
+    expect(recommendation && isPersistenceSurveillanceRecommendation(recommendation)).toBe(true);
+    const rec = recommendation as any;
+    expect(rec.persistenceConfirmation.timing).toEqual({
+      kind: "specified",
+      intervals: ["6-12 months"],
+    });
+    expect(rec.ifPersistent.timing).toEqual({
+      kind: "specified",
+      intervals: ["every 2 years until 5 years"],
+    });
+    expect(rec.actions).toBeUndefined();
+  });
+
+  it("S3 and BTS produce no Source Evaluation Outcome for this pathway (no Atomic Clinical Rule bound to it)", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+    };
+    const trace = evaluate(input, release);
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+    expect(trace.sourceEvaluationOutcomes[0].recommendationSourceId).toBe("fleischner");
+  });
+
+  it("a diameter that would also fall inside Solid's Fleischner 6-8mm range never triggers the Solid rule on the GGN pathway", () => {
+    const input: ClinicalInputState = {
+      ...ggnBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-GGN-GTE6MM",
+    );
+  });
+
+  it("measurement-convention enforcement applies identically on the GGN pathway: no matching convention -> INSUFFICIENT_INPUT", () => {
+    const input: ClinicalInputState = { ...ggnBasePathway, ...baseApplicability, nodule_size_mm: 5 };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.state).toBe("INSUFFICIENT_INPUT");
   });
 });

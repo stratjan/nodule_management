@@ -1,0 +1,21 @@
+{
+  "ruleId": "GR-2",
+  "revisionId": "GR-2-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-06" },
+  "provenance": {
+    "sourceDocument": "GitHub issue #17 (final clinical/architecture approval)",
+    "version": "issue #17 final review",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Issue #17, \"1. New Clinical Pathway\" section"
+  },
+  "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+  "conditions": [
+    { "field": "nodule_morphology", "op": "eq", "value": "pure-ground-glass" },
+    { "field": "assessment_context", "op": "eq", "value": "incidental" },
+    { "field": "assessment_timepoint", "op": "eq", "value": "initial" },
+    { "field": "nodule_count", "op": "eq", "value": 1 }
+  ]
+}

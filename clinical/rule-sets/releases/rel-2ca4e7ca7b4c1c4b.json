@@ -1,0 +1,469 @@
+{
+  "releaseId": "rel-2ca4e7ca7b4c1c4b",
+  "createdAt": "2026-09-06T08:55:32.148Z",
+  "revisions": [
+    {
+      "ruleId": "GR-1",
+      "revisionId": "GR-1-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-08-31"
+      },
+      "kind": "pathway-gate",
+      "clinicalPathwayId": "incidental-solitary-solid-initial",
+      "conditions": [
+        {
+          "field": "nodule_morphology",
+          "op": "eq",
+          "value": "solid"
+        },
+        {
+          "field": "assessment_context",
+          "op": "eq",
+          "value": "incidental"
+        },
+        {
+          "field": "assessment_timepoint",
+          "op": "eq",
+          "value": "initial"
+        },
+        {
+          "field": "nodule_count",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "provenance": {
+        "sourceDocument": "GitHub issues #1 (Wayfinder map), #5 (final clinical approval), #7 (Phase 1 spec)",
+        "version": "issue #7 revision pass 2",
+        "originalLanguage": "English",
+        "sourceType": "Clinically-approved specification",
+        "locator": "Issue #7, \"Clinical Pathway Gate (GR-1)\" section"
+      }
+    },
+    {
+      "ruleId": "GR-2",
+      "revisionId": "GR-2-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "pathway-gate",
+      "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+      "conditions": [
+        {
+          "field": "nodule_morphology",
+          "op": "eq",
+          "value": "pure-ground-glass"
+        },
+        {
+          "field": "assessment_context",
+          "op": "eq",
+          "value": "incidental"
+        },
+        {
+          "field": "assessment_timepoint",
+          "op": "eq",
+          "value": "initial"
+        },
+        {
+          "field": "nodule_count",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "provenance": {
+        "sourceDocument": "GitHub issue #17 (final clinical/architecture approval)",
+        "version": "issue #17 final review",
+        "originalLanguage": "English",
+        "sourceType": "Clinically-approved specification",
+        "locator": "Issue #17, \"1. New Clinical Pathway\" section"
+      }
+    },
+    {
+      "ruleId": "SAR-S3",
+      "revisionId": "SAR-S3-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-08-31"
+      },
+      "kind": "source-applicability",
+      "recommendationSourceId": "s3",
+      "conditions": [
+        {
+          "field": "age",
+          "op": "gte",
+          "value": 18
+        },
+        {
+          "field": "known_malignancy_history",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "immunocompromised",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 1, \"Einschlusskriterien der Findings bei inzidentellen Lungenrundherden nach Guideline\", S3 column"
+      }
+    },
+    {
+      "ruleId": "SAR-FLEISCHNER",
+      "revisionId": "SAR-FLEISCHNER-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-08-31"
+      },
+      "kind": "source-applicability",
+      "recommendationSourceId": "fleischner",
+      "conditions": [
+        {
+          "field": "age",
+          "op": "gte",
+          "value": 35
+        },
+        {
+          "field": "known_malignancy_history",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "immunocompromised",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 1, \"Einschlusskriterien der Findings bei inzidentellen Lungenrundherden nach Guideline\", Fleischner column"
+      }
+    },
+    {
+      "ruleId": "ACR-S3-5TO8MM",
+      "revisionId": "ACR-S3-5TO8MM-r2",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "s3",
+      "clinicalPathwayId": "incidental-solitary-solid-initial",
+      "measurementBasis": "volume-preferred",
+      "diameterConditions": [
+        {
+          "field": "nodule_size_mm",
+          "op": "gte",
+          "value": 5
+        },
+        {
+          "field": "nodule_size_mm",
+          "op": "lt",
+          "value": 8
+        }
+      ],
+      "volumeConditions": [
+        {
+          "field": "nodule_volume_mm3",
+          "op": "gte",
+          "value": 80
+        },
+        {
+          "field": "nodule_volume_mm3",
+          "op": "lt",
+          "value": 300
+        }
+      ],
+      "recommendation": {
+        "clinicalEndpoint": "CT surveillance",
+        "intervals": [
+          "3 months",
+          "6-12 months",
+          "18-24 months"
+        ],
+        "rationale": "S3 recommends a three-stage CT surveillance schedule (3, 6-12, and 18-24 months) for a solitary, solid, incidental pulmonary nodule in the 5mm-<8mm diameter (or 80mm3-<300mm3 volume) range, in a patient >=18 years old with no known malignancy history and not immunocompromised."
+      },
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 2 \"Rundherdmanagment Index CT\" + S3 narrative section (April 2025 representation)"
+      }
+    },
+    {
+      "ruleId": "ACR-FLEISCHNER-6TO8MM",
+      "revisionId": "ACR-FLEISCHNER-6TO8MM-r3",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-solitary-solid-initial",
+      "measurementBasis": "diameter",
+      "diameterConditions": [
+        {
+          "field": "nodule_size_mm",
+          "op": "gte",
+          "value": 6
+        },
+        {
+          "field": "nodule_size_mm",
+          "op": "lte",
+          "value": 8
+        }
+      ],
+      "measurementConventionId": "fleischner-2017-average-diameter",
+      "recommendation": {
+        "clinicalEndpoint": "CT surveillance",
+        "intervals": [
+          "6-12 months"
+        ],
+        "rationale": "Fleischner recommends CT surveillance at 6-12 months for a solitary, solid, incidental pulmonary nodule 6-8mm in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised."
+      },
+      "provenanceAnchors": [
+        {
+          "role": "management",
+          "provenance": {
+            "sourceDocument": "Local SOP",
+            "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+            "originalLanguage": "German",
+            "sourceType": "Local SOP",
+            "locator": "Tabelle 2 + Fleischner narrative section (2017 representation)"
+          }
+        },
+        {
+          "role": "measurement",
+          "provenance": {
+            "sourceDocument": "MacMahon H, et al. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images",
+            "version": "2017 (Fleischner Society)",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Nodule size/diameter measurement definition"
+          }
+        }
+      ]
+    },
+    {
+      "ruleId": "ACR-FLEISCHNER-GT8TO30MM",
+      "revisionId": "ACR-FLEISCHNER-GT8TO30MM-r2",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-solitary-solid-initial",
+      "measurementBasis": "diameter",
+      "diameterConditions": [
+        {
+          "field": "nodule_size_mm",
+          "op": "gt",
+          "value": 8
+        },
+        {
+          "field": "nodule_size_mm",
+          "op": "lte",
+          "value": 30
+        }
+      ],
+      "measurementConventionId": "fleischner-2017-average-diameter",
+      "recommendation": {
+        "actions": [
+          {
+            "label": "CT surveillance",
+            "timing": {
+              "kind": "specified",
+              "intervals": [
+                "3 months"
+              ]
+            }
+          },
+          {
+            "label": "PET-CT",
+            "timing": {
+              "kind": "not-specified-by-source"
+            }
+          },
+          {
+            "label": "Biopsy/tissue sampling",
+            "timing": {
+              "kind": "not-specified-by-source"
+            }
+          }
+        ],
+        "rationale": "Fleischner recommends, for a solitary, solid, incidental pulmonary nodule greater than 8mm and up to 30mm in diameter (Fleischner's own nodule/mass boundary), in a patient >=35 years old with no known malignancy history and not immunocompromised: CT surveillance at 3 months, or further characterization by PET-CT, or biopsy/tissue sampling -- presented as coequal options with no source-stated ranking between them."
+      },
+      "provenanceAnchors": [
+        {
+          "role": "management",
+          "provenance": {
+            "sourceDocument": "Local SOP",
+            "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+            "originalLanguage": "German",
+            "sourceType": "Local SOP",
+            "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), >8mm row"
+          }
+        },
+        {
+          "role": "scope",
+          "provenance": {
+            "sourceDocument": "Fleischner Society Glossary of Terms for Thoracic Imaging",
+            "version": "2024",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Nodule/mass boundary definition (nodule: <=30mm; mass: >30mm)"
+          }
+        },
+        {
+          "role": "measurement",
+          "provenance": {
+            "sourceDocument": "MacMahon H, et al. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images",
+            "version": "2017 (Fleischner Society)",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Nodule size/diameter measurement definition"
+          }
+        }
+      ]
+    },
+    {
+      "ruleId": "ACR-FLEISCHNER-GGN-LT6MM",
+      "revisionId": "ACR-FLEISCHNER-GGN-LT6MM-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+      "measurementBasis": "diameter",
+      "diameterConditions": [
+        {
+          "field": "nodule_size_mm",
+          "op": "lt",
+          "value": 6
+        }
+      ],
+      "measurementConventionId": "fleischner-2017-average-diameter",
+      "recommendation": {
+        "noRoutineFollowUp": true,
+        "rationale": "Fleischner recommends no routine follow-up for a solitary, pure ground-glass/non-solid, incidental pulmonary nodule less than 6mm in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised."
+      },
+      "provenanceAnchors": [
+        {
+          "role": "management",
+          "provenance": {
+            "sourceDocument": "Local SOP",
+            "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+            "originalLanguage": "German",
+            "sourceType": "Local SOP",
+            "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), pure ground-glass row"
+          }
+        },
+        {
+          "role": "measurement",
+          "provenance": {
+            "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+            "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Figure 3 (pure ground-glass nodule measurement example, applying the Figure 2 average-diameter approach) and Figure 2 (average-diameter definition)"
+          }
+        }
+      ]
+    },
+    {
+      "ruleId": "ACR-FLEISCHNER-GGN-GTE6MM",
+      "revisionId": "ACR-FLEISCHNER-GGN-GTE6MM-r1",
+      "approvalStatus": "Approved",
+      "approvalEvent": {
+        "by": "stratjan",
+        "at": "2026-09-06"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+      "measurementBasis": "diameter",
+      "diameterConditions": [
+        {
+          "field": "nodule_size_mm",
+          "op": "gte",
+          "value": 6
+        }
+      ],
+      "measurementConventionId": "fleischner-2017-average-diameter",
+      "recommendation": {
+        "persistenceConfirmation": {
+          "label": "CT to confirm persistence",
+          "timing": {
+            "kind": "specified",
+            "intervals": [
+              "6-12 months"
+            ]
+          }
+        },
+        "ifPersistent": {
+          "label": "CT surveillance",
+          "timing": {
+            "kind": "specified",
+            "intervals": [
+              "every 2 years until 5 years"
+            ]
+          }
+        },
+        "rationale": "Fleischner recommends, for a solitary, pure ground-glass/non-solid, incidental pulmonary nodule 6mm or greater in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised: a CT at 6-12 months to confirm persistence, and, only if the nodule is confirmed persistent, continued CT surveillance every 2 years until 5 years. The Local SOP's own wording states this boundary as '>6mm'; the governed executable boundary is '>=6mm', per explicit clinical HITL approval treating the Local SOP wording as an imprecise transcription of the underlying Fleischner 2017 source table (see clinical/sources/local-sop.json findings)."
+      },
+      "provenanceAnchors": [
+        {
+          "role": "management",
+          "provenance": {
+            "sourceDocument": "Local SOP",
+            "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+            "originalLanguage": "German",
+            "sourceType": "Local SOP",
+            "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), pure ground-glass row (Local SOP states \">6mm\"; see clinical/sources/local-sop.json findings and Release Manifest notes for the governed >=6mm correction)"
+          }
+        },
+        {
+          "role": "boundary",
+          "provenance": {
+            "sourceDocument": "MacMahon H, et al. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images",
+            "version": "2017 (Fleischner Society)",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Pure ground-glass nodule <6mm / >=6mm management table"
+          }
+        },
+        {
+          "role": "measurement",
+          "provenance": {
+            "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+            "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Figure 3 (pure ground-glass nodule measurement example, applying the Figure 2 average-diameter approach) and Figure 2 (average-diameter definition)"
+          }
+        }
+      ]
+    }
+  ]
+}

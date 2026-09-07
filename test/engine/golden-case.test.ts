@@ -25,7 +25,10 @@ describe("Golden Clinical Case (7mm / 180mm3, age 55, solitary, no exclusions)",
   const trace = evaluate(goldenCaseInput, release);
 
   it("passes the Clinical Pathway Gate", () => {
-    expect(trace.clinicalPathwayGate.passed).toBe(true);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-initial",
+    });
   });
 
   it("S3 produces RECOMMENDATION: CT surveillance at 3, 6-12, 18-24 months", () => {
@@ -84,7 +87,10 @@ describe("Golden Clinical Case (15mm Fleischner-bound diameter, age 55, solitary
   const trace = evaluate(goldenCaseGt8mmInput, release);
 
   it("passes the Clinical Pathway Gate", () => {
-    expect(trace.clinicalPathwayGate.passed).toBe(true);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-initial",
+    });
   });
 
   it("Fleischner produces RECOMMENDATION via the new >8mm rule, in its structured form", () => {

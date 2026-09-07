@@ -1,0 +1,38 @@
+{
+  "ruleId": "ACR-FLEISCHNER-GGN-LT6MM",
+  "revisionId": "ACR-FLEISCHNER-GGN-LT6MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-solitary-pure-ggn-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-06" },
+  "provenanceAnchors": [
+    {
+      "role": "management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Tabelle 2 + Fleischner narrative section (2017 representation), pure ground-glass row"
+      }
+    },
+    {
+      "role": "measurement",
+      "provenance": {
+        "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+        "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Figure 3 (pure ground-glass nodule measurement example, applying the Figure 2 average-diameter approach) and Figure 2 (average-diameter definition)"
+      }
+    }
+  ],
+  "measurementBasis": "diameter",
+  "measurementConventionId": "fleischner-2017-average-diameter",
+  "diameterConditions": [{ "field": "nodule_size_mm", "op": "lt", "value": 6 }],
+  "recommendation": {
+    "noRoutineFollowUp": true,
+    "rationale": "Fleischner recommends no routine follow-up for a solitary, pure ground-glass/non-solid, incidental pulmonary nodule less than 6mm in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised."
+  }
+}

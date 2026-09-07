@@ -1,10 +1,11 @@
 {
   "ruleId": "ACR-FLEISCHNER-6TO8MM",
-  "revisionId": "ACR-FLEISCHNER-6TO8MM-r2",
+  "revisionId": "ACR-FLEISCHNER-6TO8MM-r3",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-solitary-solid-initial",
   "approvalStatus": "Approved",
-  "approvalEvent": { "by": "stratjan", "at": "2026-09-02" },
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-06" },
   "provenanceAnchors": [
     {
       "role": "management",
