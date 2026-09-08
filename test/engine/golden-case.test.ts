@@ -144,3 +144,133 @@ describe("Golden Clinical Case (15mm Fleischner-bound diameter, age 55, solitary
     ]);
   });
 });
+
+// Third Golden Clinical Case (issue #18 clinical HITL approval, Candidate B, State A): a
+// solitary part-solid nodule below 6mm. Human-reviewed expected outcome (no routine follow-up),
+// verified directly against MacMahon et al. 2017 Recommendation 4.
+const goldenCasePartSolidStateAInput: ClinicalInputState = {
+  nodule_morphology: "part-solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 1,
+  nodule_size_mm: 5,
+  nodule_diameter_measurements: [{ valueMm: 5, conventionId: "fleischner-2017-average-diameter" }],
+  age: 55,
+  known_malignancy_history: false,
+  immunocompromised: false,
+};
+
+describe("Golden Clinical Case (part-solid, whole nodule 5mm, age 55, solitary, no exclusions) -- issue #18 State A", () => {
+  const trace = evaluate(goldenCasePartSolidStateAInput, release);
+
+  it("passes the Clinical Pathway Gate onto the part-solid pathway", () => {
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-part-solid-initial",
+    });
+  });
+
+  it("Fleischner produces RECOMMENDATION via the <6mm rule, no-routine-follow-up form", () => {
+    const fleischner = trace.sourceEvaluationOutcomes.find(
+      (o) => o.recommendationSourceId === "fleischner",
+    );
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-LT6MM");
+    expect((fleischner?.recommendation as any)?.noRoutineFollowUp).toBe(true);
+    expect((fleischner?.recommendation as any)?.intervals).toBeUndefined();
+    expect((fleischner?.recommendation as any)?.actions).toBeUndefined();
+  });
+
+  it("S3 and BTS produce no Source Evaluation Outcome at all (no Atomic Clinical Rule bound to this pathway)", () => {
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+  });
+
+  it("Recommendation Set contains exactly the one RECOMMENDATION-state entry (Fleischner)", () => {
+    expect(trace.recommendationSet).toHaveLength(1);
+    expect(trace.recommendationSet[0].recommendationSourceId).toBe("fleischner");
+  });
+});
+
+// Fourth Golden Clinical Case (issue #18 clinical HITL approval, Candidate B, State B): a
+// solitary part-solid nodule with whole-nodule diameter >=6mm and solid component <6mm.
+// Human-reviewed expected outcome (persistence-surveillance), verified directly against
+// MacMahon et al. 2017 Recommendation 4, paragraph 2.
+const goldenCasePartSolidStateBInput: ClinicalInputState = {
+  nodule_morphology: "part-solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 1,
+  nodule_size_mm: 7,
+  nodule_diameter_measurements: [{ valueMm: 7, conventionId: "fleischner-2017-average-diameter" }],
+  solid_component_diameter_measurements: [
+    { valueMm: 5, conventionId: "fleischner-2017-solid-component-long-axis" },
+  ],
+  age: 55,
+  known_malignancy_history: false,
+  immunocompromised: false,
+};
+
+describe("Golden Clinical Case (part-solid, whole nodule 7mm, solid component 5mm, age 55, solitary, no exclusions) -- issue #18 State B", () => {
+  const trace = evaluate(goldenCasePartSolidStateBInput, release);
+
+  it("passes the Clinical Pathway Gate onto the part-solid pathway", () => {
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-part-solid-initial",
+    });
+  });
+
+  it("Fleischner produces RECOMMENDATION via the >=6mm/solid<6mm rule, persistence-surveillance form", () => {
+    const fleischner = trace.sourceEvaluationOutcomes.find(
+      (o) => o.recommendationSourceId === "fleischner",
+    );
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+    );
+
+    const recommendation = fleischner?.recommendation as any;
+    expect(recommendation.persistenceConfirmation).toEqual({
+      label: "CT to confirm persistence",
+      timing: { kind: "specified", intervals: ["3-6 months"] },
+    });
+    expect(recommendation.ifPersistent).toEqual({
+      label: "CT surveillance",
+      timing: { kind: "specified", intervals: ["annually until 5 years"] },
+    });
+
+    const anchors = recommendation.provenanceAnchors;
+    expect(anchors).toHaveLength(4);
+    const roles = anchors.map((a: any) => a.role).sort();
+    expect(roles).toEqual([
+      "local-management",
+      "primary-management",
+      "solid-component-measurement",
+      "whole-nodule-measurement",
+    ]);
+  });
+
+  it("the recommendation records both independently-resolved measurements used, never falsely reporting only one", () => {
+    const fleischner = trace.sourceEvaluationOutcomes.find(
+      (o) => o.recommendationSourceId === "fleischner",
+    );
+    expect(fleischner?.recommendation?.measurementBasisUsed).toBe("diameter");
+    expect(fleischner?.recommendation?.measurementsUsed).toEqual({
+      wholeNodule: { valueMm: 7, conventionId: "fleischner-2017-average-diameter" },
+      solidComponent: { valueMm: 5, conventionId: "fleischner-2017-solid-component-long-axis" },
+    });
+  });
+
+  it("S3 and BTS produce no Source Evaluation Outcome at all (no Atomic Clinical Rule bound to this pathway)", () => {
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+  });
+
+  it("the input's solid_component_diameter_measurements is echoed unchanged in the trace, structurally separate from nodule_diameter_measurements", () => {
+    expect(trace.normalizedClinicalInputState.nodule_diameter_measurements).toEqual([
+      { valueMm: 7, conventionId: "fleischner-2017-average-diameter" },
+    ]);
+    expect(trace.normalizedClinicalInputState.solid_component_diameter_measurements).toEqual([
+      { valueMm: 5, conventionId: "fleischner-2017-solid-component-long-axis" },
+    ]);
+  });
+});

@@ -47,6 +47,7 @@ const ruleRevisionBaseSchema = z.object({
 const clinicalPathwayIdSchema = z.enum([
   "incidental-solitary-solid-initial",
   "incidental-solitary-pure-ggn-initial",
+  "incidental-solitary-part-solid-initial",
 ]);
 
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
@@ -70,7 +71,10 @@ export const sourceApplicabilityRevisionSchema = ruleRevisionBaseSchema
 // issue #20: closed, machine-readable measurement-convention vocabulary -- mirrors
 // MeasurementConventionId in types.ts. Extend both together only when a rule actually needs a
 // second convention.
-const measurementConventionIdSchema = z.enum(["fleischner-2017-average-diameter"]);
+const measurementConventionIdSchema = z.enum([
+  "fleischner-2017-average-diameter",
+  "fleischner-2017-solid-component-long-axis",
+]);
 
 // issue #20: exactly two timing forms, never a third -- a non-empty stated interval list, or an
 // explicit "not specified by source" marker. Discriminated on `kind` since this is a fresh type
@@ -168,6 +172,10 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   diameterConditions: z.array(conditionSchema).optional(),
   volumeConditions: z.array(conditionSchema).optional(),
   measurementConventionId: measurementConventionIdSchema.optional(),
+  // issue #18: independently-scoped solid-component convention binding -- see the cross-field
+  // refine below for the bidirectional invariant against diameterConditions' synthetic
+  // "solid_component_size_mm" shadow field.
+  solidComponentMeasurementConventionId: measurementConventionIdSchema.optional(),
   recommendation: recommendationContentSchema,
   // issue #20: exactly one of provenance (single, legacy) / provenanceAnchors (multi-anchor) --
   // both optional here, enforced exactly-one-present by the cross-field refine below, following
@@ -213,7 +221,22 @@ export const ruleRevisionSchema = z
     const hasSingle = rule.provenance !== undefined;
     const hasMultiAnchor = rule.provenanceAnchors !== undefined;
     return hasSingle !== hasMultiAnchor;
-  }, "an atomic-clinical-rule must declare exactly one of provenance (single) or provenanceAnchors (multi-anchor), never both, never neither");
+  }, "an atomic-clinical-rule must declare exactly one of provenance (single) or provenanceAnchors (multi-anchor), never both, never neither")
+  // issue #18: bidirectional binding between solidComponentMeasurementConventionId and the
+  // synthetic "solid_component_size_mm" diameterConditions shadow field -- neither may be present
+  // without the other. "solid_component_size_mm" is not a raw ClinicalInputState field; a rule
+  // must never be authorable with a condition on it while omitting the convention-bound resolver
+  // that supplies it (declaring the field with no convention binding), and declaring the binding
+  // with no condition that actually uses it would be a pointless, unenforceable requirement
+  // (final spec review, correction 2).
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule") return true;
+    const hasSolidComponentCondition = (rule.diameterConditions ?? []).some(
+      (c) => c.field === "solid_component_size_mm",
+    );
+    const hasSolidComponentConvention = rule.solidComponentMeasurementConventionId !== undefined;
+    return hasSolidComponentCondition === hasSolidComponentConvention;
+  }, "an atomic-clinical-rule declaring solidComponentMeasurementConventionId must include a diameterConditions entry on field \"solid_component_size_mm\", and vice versa");
 
 export const ruleSetReleaseSchema = z.object({
   releaseId: z.string().min(1),

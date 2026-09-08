@@ -40,6 +40,12 @@ function fleischnerMeasurement(valueMm: number) {
   return [{ valueMm, conventionId: "fleischner-2017-average-diameter" as const }];
 }
 
+/** issue #18: solid-component diameter, independently convention-bound from the whole-nodule
+ * measurement above -- never the same array, never copied between the two. */
+function solidComponentMeasurement(valueMm: number) {
+  return [{ valueMm, conventionId: "fleischner-2017-solid-component-long-axis" as const }];
+}
+
 function outcomeFor(trace: ReturnType<typeof evaluate>, sourceId: string) {
   return trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === sourceId);
 }
@@ -526,5 +532,221 @@ describe("pure ground-glass pathway (issue #17)", () => {
     const input: ClinicalInputState = { ...ggnBasePathway, ...baseApplicability, nodule_size_mm: 5 };
     const trace = evaluate(input, release);
     expect(outcomeFor(trace, "fleischner")?.state).toBe("INSUFFICIENT_INPUT");
+  });
+});
+
+// issue #18: part-solid pathway (GR-3), Fleischner-only, Candidate B (State A + State B).
+const partSolidBasePathway = {
+  nodule_morphology: "part-solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 1,
+} as const;
+
+describe("part-solid pathway (issue #18)", () => {
+  it("State A -- whole 5mm: no routine follow-up, no solid-component input required", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-part-solid-initial",
+    });
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-LT6MM");
+
+    const recommendation = fleischner?.recommendation;
+    expect(recommendation && isNoRoutineFollowUpRecommendation(recommendation)).toBe(true);
+    expect((recommendation as any).noRoutineFollowUp).toBe(true);
+    expect(recommendation?.measurementsUsed).toEqual({
+      wholeNodule: { valueMm: 5, conventionId: "fleischner-2017-average-diameter" },
+    });
+  });
+
+  it("PR #24 review: engineVersion/schemaVersion report 1.2.0 -- this additive evolution (new ClinicalPathwayId, MeasurementConventionId, Atomic-rule field, dual-measurement semantics, measurementsUsed trace shape) must not silently claim the prior 1.1.0 contract", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    expect(trace.engineVersion).toBe("1.2.0");
+    expect(trace.schemaVersion).toBe("1.2.0");
+  });
+
+  it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 6,
+      nodule_diameter_measurements: fleischnerMeasurement(6),
+      solid_component_diameter_measurements: solidComponentMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+    );
+  });
+
+  it("State B -- whole 7mm + solid 5mm: persistence-confirmation CT 3-6mo, then annual CT until 5y if persistent", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+      solid_component_diameter_measurements: solidComponentMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    const recommendation = fleischner?.recommendation;
+    expect(recommendation && isPersistenceSurveillanceRecommendation(recommendation)).toBe(true);
+    const rec = recommendation as any;
+    expect(rec.persistenceConfirmation.timing).toEqual({ kind: "specified", intervals: ["3-6 months"] });
+    expect(rec.ifPersistent.timing).toEqual({ kind: "specified", intervals: ["annually until 5 years"] });
+    expect(recommendation?.measurementsUsed).toEqual({
+      wholeNodule: { valueMm: 7, conventionId: "fleischner-2017-average-diameter" },
+      solidComponent: { valueMm: 5, conventionId: "fleischner-2017-solid-component-long-axis" },
+    });
+  });
+
+  it("State B -- whole 10mm + solid 5mm: same rule applies, no additional upper scope limit in this slice", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+      solid_component_diameter_measurements: solidComponentMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+    );
+  });
+
+  it("excluded state -- whole 7mm + solid 6mm: OUTSIDE_CURRENT_RULESET_SCOPE, never the <6mm-solid recommendation", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+      solid_component_diameter_measurements: solidComponentMeasurement(6),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+    expect(fleischner?.recommendation).toBeUndefined();
+  });
+
+  it("excluded state -- whole 10mm + solid 8mm: OUTSIDE_CURRENT_RULESET_SCOPE", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+      solid_component_diameter_measurements: solidComponentMeasurement(8),
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+  });
+
+  it("missing input -- whole 7mm, no solid-component measurement supplied at all: INSUFFICIENT_INPUT naming the solid-component convention", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("fleischner-2017-solid-component-long-axis");
+    expect(fleischner?.reason).toContain("solid-component");
+  });
+
+  it("missing input -- whole-nodule convention missing entirely (whole <6mm, so no solid-component question is even reached): INSUFFICIENT_INPUT", () => {
+    const input: ClinicalInputState = { ...partSolidBasePathway, ...baseApplicability, nodule_size_mm: 5 };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("whole-nodule");
+  });
+
+  it("ambiguous whole-nodule measurement -- two entries under the same convention: INSUFFICIENT_INPUT, never silently picks the first", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: [
+        { valueMm: 5, conventionId: "fleischner-2017-average-diameter" },
+        { valueMm: 7, conventionId: "fleischner-2017-average-diameter" },
+      ],
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("Multiple");
+  });
+
+  it("ambiguous solid-component measurement -- two entries under the same convention: INSUFFICIENT_INPUT, never silently picks the first", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: fleischnerMeasurement(7),
+      solid_component_diameter_measurements: [
+        { valueMm: 5, conventionId: "fleischner-2017-solid-component-long-axis" },
+        { valueMm: 6, conventionId: "fleischner-2017-solid-component-long-axis" },
+      ],
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("Multiple");
+  });
+
+  it("S3 and BTS produce no Source Evaluation Outcome for this pathway (no Atomic Clinical Rule bound to it)", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+    };
+    const trace = evaluate(input, release);
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+    expect(trace.sourceEvaluationOutcomes[0].recommendationSourceId).toBe("fleischner");
+  });
+
+  it("Rule 1 and Rule 2 are mutually exclusive on the shared whole-nodule condition -- evaluate() never throws AmbiguousRuleMatchError across the boundary, even though release-time overlap validation cannot prove this pair non-overlapping (mixed-field diameterConditions)", () => {
+    const belowBoundary: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+      solid_component_diameter_measurements: solidComponentMeasurement(5),
+    };
+    const atBoundary: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 6,
+      nodule_diameter_measurements: fleischnerMeasurement(6),
+      solid_component_diameter_measurements: solidComponentMeasurement(5),
+    };
+    expect(() => evaluate(belowBoundary, release)).not.toThrow();
+    expect(() => evaluate(atBoundary, release)).not.toThrow();
+    expect(outcomeFor(evaluate(belowBoundary, release), "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-LT6MM",
+    );
+    expect(outcomeFor(evaluate(atBoundary, release), "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+    );
   });
 });

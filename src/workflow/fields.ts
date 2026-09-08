@@ -15,6 +15,11 @@ export interface NumberFieldDef {
   type: "number";
   step?: string;
   min?: number;
+  /** issue #18/#9: product-wide whole-millimeter clinical diameter authoring -- rejects (never
+   * rounds) a fractional committed value at the UI layer. See src/workflow/wholeMmInput.ts.
+   * Not part-solid-specific; applies to nodule_size_mm generally, per the binding product
+   * decision recorded on issue #9. */
+  wholeMmOnly?: boolean;
 }
 
 export interface BooleanFieldDef {
@@ -34,6 +39,7 @@ export const pathwayFields: FieldDef[] = [
     options: [
       { value: "solid", label: "Solid" },
       { value: "pure-ground-glass", label: "Pure ground-glass / non-solid" },
+      { value: "part-solid", label: "Part-solid" },
     ],
   },
   {
@@ -53,7 +59,7 @@ export const pathwayFields: FieldDef[] = [
 
 /** Step 2: measurement -- at least one of the two required, neither individually mandatory. */
 export const measurementFields: FieldDef[] = [
-  { id: "nodule_size_mm", label: "Diameter (mm)", type: "number", step: "0.1", min: 0 },
+  { id: "nodule_size_mm", label: "Whole-nodule diameter (mm)", type: "number", step: "1", min: 0, wholeMmOnly: true },
   { id: "nodule_volume_mm3", label: "Volume (mm³)", type: "number", step: "1", min: 0 },
 ];
 

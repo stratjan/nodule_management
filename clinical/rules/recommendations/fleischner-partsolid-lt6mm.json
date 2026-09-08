@@ -1,0 +1,48 @@
+{
+  "ruleId": "ACR-FLEISCHNER-PARTSOLID-LT6MM",
+  "revisionId": "ACR-FLEISCHNER-PARTSOLID-LT6MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-solitary-part-solid-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-08" },
+  "provenanceAnchors": [
+    {
+      "role": "local-management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Fleischner narrative, part-solid subsection, management statement for whole-nodule diameter below 6 mm"
+      }
+    },
+    {
+      "role": "primary-management",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 4 (solitary part-solid lung nodules), paragraph 1: \"For solitary part-solid nodules smaller than 6 mm, no routine follow-up is recommended... discrete solid components cannot be reliably defined in such small nodules\""
+      }
+    },
+    {
+      "role": "whole-nodule-measurement",
+      "provenance": {
+        "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+        "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Figure 2 (average-diameter definition) and Figure 3 (subsolid nodule measurement example applying it) -- same anchor already governing fleischner-2017-average-diameter for pure-GGN (issue #17)"
+      }
+    }
+  ],
+  "measurementBasis": "diameter",
+  "measurementConventionId": "fleischner-2017-average-diameter",
+  "diameterConditions": [{ "field": "nodule_size_mm", "op": "lt", "value": 6 }],
+  "recommendation": {
+    "noRoutineFollowUp": true,
+    "rationale": "Fleischner recommends no routine follow-up for a solitary, part-solid, incidental pulmonary nodule less than 6mm in whole-nodule diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised. Per the primary Fleischner 2017 guideline, discrete solid components cannot be reliably defined in nodules this small, so no solid-component measurement is required or evaluated for this rule."
+  }
+}

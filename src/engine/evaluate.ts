@@ -15,6 +15,8 @@ import type {
   ClinicalInputState,
   ClinicalPathwayGateResult,
   DecisionExecutionTrace,
+  DiameterMeasurement,
+  MeasurementConventionId,
   PathwayGateRevision,
   PathwaySelection,
   RecommendationContent,
@@ -30,8 +32,8 @@ import {
   isStructuredRecommendation,
 } from "./types";
 
-export const ENGINE_VERSION = "1.1.0";
-export const SCHEMA_VERSION = "1.1.0";
+export const ENGINE_VERSION = "1.2.0";
+export const SCHEMA_VERSION = "1.2.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -75,6 +77,65 @@ export class AmbiguousRuleMatchError extends Error {
   }
 }
 
+/**
+ * issue #18: the outcome of resolving one convention-bound measurement operand. "ambiguous"
+ * (more than one entry sharing the required conventionId) is distinguished from "missing" (no
+ * matching entry at all) -- both are Clinical-Input-State data-quality problems, never a
+ * Rule-Set authoring defect, so neither is thrown as an engine error; both surface as
+ * INSUFFICIENT_INPUT via insufficientInputForMeasurement() below.
+ */
+type MeasurementResolution =
+  | { state: "resolved"; valueMm: number }
+  | { state: "missing"; suppliedIds: MeasurementConventionId[] }
+  | { state: "ambiguous"; count: number };
+
+/**
+ * A deterministic lookup-then-equality resolver, shared by every convention-bound measurement
+ * operand (whole-nodule and solid-component alike -- issue #18). Replaces the previous bare
+ * `.find()`, which silently returned the first match and left duplicate same-convention entries
+ * unresolved/order-dependent (noted after #20/#21 review). No rounding, normalization, or
+ * derivation -- unchanged invariant.
+ */
+function resolveConventionBoundMeasurement(
+  measurements: DiameterMeasurement[] | undefined,
+  requiredId: MeasurementConventionId,
+): MeasurementResolution {
+  const matches = (measurements ?? []).filter((m) => m.conventionId === requiredId);
+  if (matches.length === 0) {
+    return { state: "missing", suppliedIds: (measurements ?? []).map((m) => m.conventionId) };
+  }
+  if (matches.length > 1) {
+    return { state: "ambiguous", count: matches.length };
+  }
+  return { state: "resolved", valueMm: matches[0].valueMm };
+}
+
+/** issue #18: builds a target-aware INSUFFICIENT_INPUT outcome so the reason text never conflates
+ * which operand (whole-nodule vs solid-component) was missing or ambiguous. */
+function insufficientInputForMeasurement(
+  resolution: Extract<MeasurementResolution, { state: "missing" | "ambiguous" }>,
+  target: "whole-nodule" | "solid-component",
+  requiredId: MeasurementConventionId,
+  sourceId: string,
+): SourceEvaluationOutcome {
+  if (resolution.state === "ambiguous") {
+    return {
+      recommendationSourceId: sourceId,
+      state: "INSUFFICIENT_INPUT",
+      reason:
+        `Multiple (${resolution.count}) ${target} diameter measurements were supplied under the ` +
+        `same required convention ("${requiredId}") -- cannot determine which value to use.`,
+    };
+  }
+  const reason =
+    `Measurement convention required by this rule for the ${target} ("${requiredId}") was not ` +
+    `confirmed by the Clinical Input State: ` +
+    (resolution.suppliedIds.length === 0
+      ? `no convention-bound ${target} diameter measurements were supplied.`
+      : `supplied convention id(s): ${resolution.suppliedIds.join(", ")}.`);
+  return { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason };
+}
+
 function isPathwayGate(r: RuleSetRelease["revisions"][number]): r is PathwayGateRevision {
   return r.kind === "pathway-gate";
 }
@@ -112,9 +173,18 @@ function buildRecommendationContentPayload(recommendation: RecommendationContent
   };
 }
 
+/** issue #18: which specific convention-bound value(s) were actually resolved and consumed for
+ * this match -- see RecommendationPayload.measurementsUsed's own doc comment for why
+ * measurementBasisUsed alone cannot convey this. */
+interface MeasurementsUsed {
+  wholeNodule?: { valueMm: number; conventionId: MeasurementConventionId };
+  solidComponent?: { valueMm: number; conventionId: MeasurementConventionId };
+}
+
 function buildRecommendationPayload(
   rule: AtomicClinicalRuleRevision,
   basisUsed: "diameter" | "volume",
+  measurementsUsed?: MeasurementsUsed,
 ): RecommendationPayload {
   const content = buildRecommendationContentPayload(rule.recommendation);
 
@@ -126,6 +196,7 @@ function buildRecommendationPayload(
     matchedRuleId: rule.ruleId,
     matchedRevisionId: rule.revisionId,
     measurementBasisUsed: basisUsed,
+    ...(measurementsUsed ? { measurementsUsed } : {}),
     ...content,
     ...provenanceCarrier,
   } as RecommendationPayload;
@@ -144,10 +215,13 @@ function evaluateSingleAtomicRule(
 ): SingleRuleResult {
   const sourceId = rule.recommendationSourceId;
 
-  const buildRecommendation = (basisUsed: "diameter" | "volume"): SourceEvaluationOutcome => ({
+  const buildRecommendation = (
+    basisUsed: "diameter" | "volume",
+    measurementsUsed?: MeasurementsUsed,
+  ): SourceEvaluationOutcome => ({
     recommendationSourceId: sourceId,
     state: "RECOMMENDATION",
-    recommendation: buildRecommendationPayload(rule, basisUsed),
+    recommendation: buildRecommendationPayload(rule, basisUsed, measurementsUsed),
   });
 
   const outOfScope = (basisUsed: "diameter" | "volume"): SourceEvaluationOutcome => ({
@@ -163,28 +237,94 @@ function evaluateSingleAtomicRule(
   });
 
   if (rule.measurementBasis === "diameter") {
-    // issue #20: a rule that requires a specific measurement convention bypasses the plain
+    // issue #20/#18: a rule that requires a specific measurement convention bypasses the plain
     // nodule_size_mm presence check entirely and instead looks up a convention-bound measurement
     // -- a plain lookup-then-equality operation, never a rounding/normalization/derivation step.
+    // issue #18: a rule may additionally require an independently-scoped solid-component
+    // measurement (solidComponentMeasurementConventionId). Resolution order is deterministic:
+    // whole-nodule first, short-circuiting on missing/ambiguous before the solid-component operand
+    // is ever attempted (final spec review requirement).
     if (rule.measurementConventionId !== undefined) {
       const requiredId = rule.measurementConventionId;
-      const matched = input.nodule_diameter_measurements?.find((m) => m.conventionId === requiredId);
-      if (!matched) {
-        const suppliedIds = input.nodule_diameter_measurements?.map((m) => m.conventionId) ?? [];
-        const reason =
-          `Measurement convention required by this rule ("${requiredId}") was not confirmed by ` +
-          `the Clinical Input State: ` +
-          (suppliedIds.length === 0
-            ? "no convention-bound diameter measurements were supplied."
-            : `supplied convention id(s): ${suppliedIds.join(", ")}.`);
-        return { rule, outcome: { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason } };
+      const wholeNoduleResolution = resolveConventionBoundMeasurement(
+        input.nodule_diameter_measurements,
+        requiredId,
+      );
+      if (wholeNoduleResolution.state !== "resolved") {
+        return {
+          rule,
+          outcome: insufficientInputForMeasurement(wholeNoduleResolution, "whole-nodule", requiredId, sourceId),
+        };
       }
-      const shadowedInput: ClinicalInputState = { ...input, nodule_size_mm: matched.valueMm };
+
+      // issue #18: "solid_component_size_mm" is a synthetic evaluation-time shadow key, not a
+      // real ClinicalInputState field (there is no generic, untagged solid-component scalar --
+      // every consumer of the solid component is convention-bound). Built as a plain record and
+      // cast at the evaluateConditions() call site, mirroring interpreter.ts's own internal
+      // Record<string, ...> treatment of ClinicalInputState.
+      const shadowedRecord: Record<string, unknown> = {
+        ...input,
+        nodule_size_mm: wholeNoduleResolution.valueMm,
+      };
+      const measurementsUsed: MeasurementsUsed = {
+        wholeNodule: { valueMm: wholeNoduleResolution.valueMm, conventionId: requiredId },
+      };
+
+      if (rule.solidComponentMeasurementConventionId !== undefined) {
+        // issue #18: before ever attempting to resolve the solid-component operand, check
+        // whether the conditions already decidable from the whole-nodule value alone already
+        // exclude this rule. AND-only semantics mean a definitive whole-nodule contradiction
+        // makes the whole conjunction false regardless of what the (still-unresolved)
+        // solid-component operand turns out to be -- mirrors #17's Clinical Pathway Gate
+        // three-valued principle ("a known contradiction is never masked by another missing
+        // field"), now applied at the Atomic Clinical Rule level. Without this, a whole-nodule
+        // <6mm input would incorrectly report INSUFFICIENT_INPUT for the >=6mm-and-solid-<6mm
+        // rule's unresolved solid-component operand, which then masks the <6mm rule's own valid
+        // RECOMMENDATION via evaluateAtomicRulesForSource's "any INSUFFICIENT_INPUT takes
+        // precedence" rule.
+        const wholeNoduleOnlyConditions = rule.diameterConditions!.filter(
+          (c) => c.field !== "solid_component_size_mm",
+        );
+        const wholeNoduleOnlyResult = evaluateConditions(
+          wholeNoduleOnlyConditions,
+          shadowedRecord as unknown as ClinicalInputState,
+        );
+        if (!wholeNoduleOnlyResult.matched) {
+          return { rule, outcome: outOfScope("diameter") };
+        }
+
+        const requiredSolidComponentId = rule.solidComponentMeasurementConventionId;
+        const solidComponentResolution = resolveConventionBoundMeasurement(
+          input.solid_component_diameter_measurements,
+          requiredSolidComponentId,
+        );
+        if (solidComponentResolution.state !== "resolved") {
+          return {
+            rule,
+            outcome: insufficientInputForMeasurement(
+              solidComponentResolution,
+              "solid-component",
+              requiredSolidComponentId,
+              sourceId,
+            ),
+          };
+        }
+        shadowedRecord.solid_component_size_mm = solidComponentResolution.valueMm;
+        measurementsUsed.solidComponent = {
+          valueMm: solidComponentResolution.valueMm,
+          conventionId: requiredSolidComponentId,
+        };
+      }
+
+      const shadowedInput = shadowedRecord as unknown as ClinicalInputState;
       const result = evaluateConditions(rule.diameterConditions!, shadowedInput);
       if (!result.allFieldsPresent) {
         return { rule, outcome: insufficientInput(result.missingFields) };
       }
-      return { rule, outcome: result.matched ? buildRecommendation("diameter") : outOfScope("diameter") };
+      return {
+        rule,
+        outcome: result.matched ? buildRecommendation("diameter", measurementsUsed) : outOfScope("diameter"),
+      };
     }
 
     if (input.nodule_size_mm === undefined) {

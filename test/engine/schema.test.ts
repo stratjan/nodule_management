@@ -24,6 +24,9 @@ const RULE_FILES = [
   "clinical/rules/recommendations/s3-5to8mm.json",
   "clinical/rules/recommendations/fleischner-6to8mm.json",
   "clinical/rules/recommendations/fleischner-gt8to30mm.json",
+  "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json",
+  "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
+  "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -298,6 +301,63 @@ describe("issue #17: closed clinicalPathwayId, no-routine-follow-up, persistence
     ).not.toThrow();
     expect(() =>
       ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/s3-5to8mm.json")),
+    ).not.toThrow();
+  });
+});
+
+describe("issue #18: part-solid pathway, dual-measurement rule, bidirectional solid-component refine", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const PARTSOLID_GATE_PATH = "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json";
+  const PARTSOLID_LT6_PATH = "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json";
+  const PARTSOLID_GTE6_PATH = "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json";
+
+  it("accepts incidental-solitary-part-solid-initial as a Pathway Gate clinicalPathwayId", () => {
+    expect(() => ruleRevisionSchema.parse(loadRaw(PARTSOLID_GATE_PATH))).not.toThrow();
+  });
+
+  it("accepts the dual-measurement rule: solidComponentMeasurementConventionId present with a matching solid_component_size_mm condition", () => {
+    const raw = loadRaw(PARTSOLID_GTE6_PATH);
+    expect(raw.solidComponentMeasurementConventionId).toBe("fleischner-2017-solid-component-long-axis");
+    expect(raw.diameterConditions.some((c: any) => c.field === "solid_component_size_mm")).toBe(true);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("accepts a rule without solidComponentMeasurementConventionId and without a solid_component_size_mm condition (Rule 1, State A)", () => {
+    const raw = loadRaw(PARTSOLID_LT6_PATH);
+    expect(raw.solidComponentMeasurementConventionId).toBeUndefined();
+    expect(raw.diameterConditions.some((c: any) => c.field === "solid_component_size_mm")).toBe(false);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects solidComponentMeasurementConventionId present without a matching solid_component_size_mm condition (final spec review, correction 2, forward direction)", () => {
+    const raw = loadRaw(PARTSOLID_LT6_PATH);
+    raw.solidComponentMeasurementConventionId = "fleischner-2017-solid-component-long-axis";
+    // diameterConditions still has no solid_component_size_mm entry.
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects a solid_component_size_mm condition present without solidComponentMeasurementConventionId (final spec review, correction 2, inverse direction)", () => {
+    const raw = loadRaw(PARTSOLID_GTE6_PATH);
+    delete raw.solidComponentMeasurementConventionId;
+    // diameterConditions still has the solid_component_size_mm entry.
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects an unrecognized solidComponentMeasurementConventionId value", () => {
+    const raw = loadRaw(PARTSOLID_GTE6_PATH);
+    raw.solidComponentMeasurementConventionId = "some-other-unrecognized-convention";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("the unmodified real GR-1/GR-2 and existing Fleischner/S3 rule files still parse under the evolved schema (backward compatibility)", () => {
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json")),
+    ).not.toThrow();
+    expect(() =>
+      ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-ggn-gte6mm.json")),
     ).not.toThrow();
   });
 });

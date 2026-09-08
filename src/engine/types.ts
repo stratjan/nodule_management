@@ -53,7 +53,10 @@ interface RuleRevisionBase {
  * union (and the matching Zod enum in schema.ts) only when a new Clinical Pathway Gate is
  * actually governed and Approved.
  */
-export type ClinicalPathwayId = "incidental-solitary-solid-initial" | "incidental-solitary-pure-ggn-initial";
+export type ClinicalPathwayId =
+  | "incidental-solitary-solid-initial"
+  | "incidental-solitary-pure-ggn-initial"
+  | "incidental-solitary-part-solid-initial";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -74,7 +77,9 @@ export interface SourceApplicabilityRevision extends RuleRevisionBase {
  * an unconstrained string. Extend this union (and the matching Zod enum in schema.ts) only when
  * a rule actually needs a second convention; nothing today does.
  */
-export type MeasurementConventionId = "fleischner-2017-average-diameter";
+export type MeasurementConventionId =
+  | "fleischner-2017-average-diameter"
+  | "fleischner-2017-solid-component-long-axis";
 
 /**
  * One measured diameter value bound to exactly one MeasurementConventionId (issue #20). Kept
@@ -215,6 +220,14 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * evaluate() looks the value up in ClinicalInputState.nodule_diameter_measurements instead of
    * reading the generic nodule_size_mm directly. */
   measurementConventionId?: MeasurementConventionId;
+  /** issue #18: which measurement convention this rule's solid-component condition(s) require --
+   * independently scoped from measurementConventionId (whole-nodule). Optional; only rules that
+   * genuinely condition on the solid component declare it. When present, the rule's
+   * diameterConditions must include at least one condition on the synthetic shadow field
+   * "solid_component_size_mm" (enforced by schema.ts's cross-field refine), and evaluate() looks
+   * the value up in ClinicalInputState.solid_component_diameter_measurements independently of the
+   * whole-nodule lookup. */
+  solidComponentMeasurementConventionId?: MeasurementConventionId;
   recommendation: RecommendationContent;
 } & ProvenanceCarrier;
 
@@ -263,6 +276,13 @@ export interface ClinicalInputState {
    * explicitly provided or affirmed a value under a specific measurement convention; never a
    * blind copy of nodule_size_mm. */
   nodule_diameter_measurements?: DiameterMeasurement[];
+  /** issue #18: solid-component diameter measurements, structurally separate (Option C) from
+   * nodule_diameter_measurements above -- the solid component is a distinct anatomical
+   * measurement target (Bankier et al. 2017, Figure 4), never the same value as the whole
+   * nodule and never silently substituted for or copied from it. Reuses DiameterMeasurement
+   * unchanged; the container field itself is what distinguishes the anatomical target, not a
+   * discriminator inside the type. */
+  solid_component_diameter_measurements?: DiameterMeasurement[];
   age?: number;
   known_malignancy_history?: boolean;
   immunocompromised?: boolean;
@@ -286,6 +306,15 @@ export type RecommendationPayload = RecommendationContent &
     matchedRuleId: string;
     matchedRevisionId: string;
     measurementBasisUsed: "diameter" | "volume";
+    /** issue #18: which specific convention-bound value(s) the matched rule actually consumed --
+     * added because measurementBasisUsed answers "diameter vs volume" only, and cannot by itself
+     * convey that a rule (e.g. the part-solid >=6mm rule) resolved two independent, differently-
+     * targeted diameter measurements. Optional and purely additive; populated only for rules that
+     * declare measurementConventionId and/or solidComponentMeasurementConventionId. */
+    measurementsUsed?: {
+      wholeNodule?: { valueMm: number; conventionId: MeasurementConventionId };
+      solidComponent?: { valueMm: number; conventionId: MeasurementConventionId };
+    };
   };
 
 export interface SourceEvaluationOutcome {

@@ -5,6 +5,7 @@ import { activeRelease } from "../data/activeRelease";
 import { activeManifest } from "../data/activeManifest";
 import { pathwayFields, measurementFields, applicabilityFields } from "../workflow/fields";
 import { canContinuePastPathwayStep, isNoduleCountOutOfScope } from "../workflow/pathwayNavigation";
+import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
 import { RecommendationView } from "./RecommendationView";
 
@@ -33,6 +34,13 @@ export function App() {
   // translated into a convention-bound nodule_diameter_measurements entry when the clinician has
   // actually checked it, at evaluation time.
   const [fleischnerConventionConfirmed, setFleischnerConventionConfirmed] = useState(false);
+  // issue #18: the solid component is a distinct anatomical measurement target (Bankier et al.
+  // 2017, Fig. 4) -- kept as its own local UI state, never derived from or copied to the
+  // whole-nodule diameter, mirroring the existing affirmation pattern above but independently
+  // scoped. Not a ClinicalInputState field itself; only translated into a convention-bound
+  // solid_component_diameter_measurements entry when the clinician has explicitly affirmed it.
+  const [solidComponentSizeMm, setSolidComponentSizeMm] = useState<number | undefined>(undefined);
+  const [solidComponentConventionConfirmed, setSolidComponentConventionConfirmed] = useState(false);
 
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => ({ ...prev, [id]: value }));
@@ -41,7 +49,26 @@ export function App() {
     // it must never silently carry over and get tagged onto a new, unaffirmed value.
     if (id === "nodule_size_mm") {
       setFleischnerConventionConfirmed(false);
+      // issue #18: the solid-component input/confirmation is only ever meaningful while the
+      // whole-nodule diameter remains part-solid and >=6mm -- any whole-nodule diameter edit
+      // invalidates it (it may no longer even be shown), same never-carry-over invariant as above.
+      setSolidComponentSizeMm(undefined);
+      setSolidComponentConventionConfirmed(false);
     }
+    // issue #18: solid-component state is only ever relevant to the part-solid pathway -- changing
+    // morphology clears it, since it becomes irrelevant (or a different pathway's own state) for
+    // any other value.
+    if (id === "nodule_morphology") {
+      setSolidComponentSizeMm(undefined);
+      setSolidComponentConventionConfirmed(false);
+    }
+  };
+
+  const handleSolidComponentDiameterChange = (raw: string) => {
+    const parsed = parseWholeMmDiameter(raw);
+    if (parsed === "invalid") return;
+    setSolidComponentSizeMm(parsed);
+    setSolidComponentConventionConfirmed(false);
   };
 
   const hasMeasurement = input.nodule_size_mm !== undefined || input.nodule_volume_mm3 !== undefined;
@@ -52,6 +79,15 @@ export function App() {
   // values.
   const isWholeMmDiameter =
     input.nodule_size_mm !== undefined && Number.isInteger(input.nodule_size_mm);
+
+  // issue #18: progressive disclosure -- the solid-component question is only ever asked for the
+  // part-solid pathway once the whole-nodule diameter is >=6mm (State A, <6mm, structurally never
+  // needs it; Fleischner's own text states discrete solid components cannot be reliably defined
+  // below 6mm anyway).
+  const showSolidComponentInput =
+    input.nodule_morphology === "part-solid" &&
+    input.nodule_size_mm !== undefined &&
+    input.nodule_size_mm >= 6;
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
   const canEvaluate = hasMeasurement;
@@ -66,15 +102,29 @@ export function App() {
     // clinician has explicitly affirmed it for a whole-mm value -- never inferred from
     // nodule_size_mm alone, and never emitted for a fractional value the convention could never
     // have produced. The legacy nodule_size_mm value used by S3/BTS is untouched either way.
-    const evaluationInput: ClinicalInputState =
-      fleischnerConventionConfirmed && isWholeMmDiameter
+    // issue #18: the solid-component measurement is populated independently, under its own
+    // convention id, only when its own confirmation is checked -- never copied from or derived
+    // from the whole-nodule value.
+    const evaluationInput: ClinicalInputState = {
+      ...input,
+      ...(fleischnerConventionConfirmed && isWholeMmDiameter
         ? {
-            ...input,
             nodule_diameter_measurements: [
-              { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" },
+              { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" as const },
             ],
           }
-        : input;
+        : {}),
+      ...(solidComponentConventionConfirmed && solidComponentSizeMm !== undefined
+        ? {
+            solid_component_diameter_measurements: [
+              {
+                valueMm: solidComponentSizeMm,
+                conventionId: "fleischner-2017-solid-component-long-axis" as const,
+              },
+            ],
+          }
+        : {}),
+    };
     const result = evaluate(evaluationInput, activeRelease);
     setTrace(result);
     setStep("results");
@@ -85,6 +135,8 @@ export function App() {
     setTrace(null);
     setShowTrace(false);
     setFleischnerConventionConfirmed(false);
+    setSolidComponentSizeMm(undefined);
+    setSolidComponentConventionConfirmed(false);
     setStep("pathway");
   };
 
@@ -164,6 +216,37 @@ export function App() {
               )}
             </span>
           </label>
+
+          {showSolidComponentInput && (
+            <>
+              <label className="field">
+                <span>Solid-component diameter (mm)</span>
+                <input
+                  type="number"
+                  step="1"
+                  min={0}
+                  value={solidComponentSizeMm ?? ""}
+                  onChange={(e) => handleSolidComponentDiameterChange(e.target.value)}
+                />
+              </label>
+              <label className="field field-checkbox">
+                <input
+                  type="checkbox"
+                  checked={solidComponentConventionConfirmed}
+                  disabled={solidComponentSizeMm === undefined}
+                  onChange={(e) => setSolidComponentConventionConfirmed(e.target.checked)}
+                />
+                <span>
+                  The solid-component diameter above was measured separately from the whole
+                  nodule, using Fleischner&apos;s solid-component long-axis convention (if the
+                  solid component&apos;s margins are ill-defined and measurements differ, the
+                  larger long-axis value). Required for this recommendation; leave unchecked if
+                  unsure. Never copied from the whole-nodule diameter.
+                </span>
+              </label>
+            </>
+          )}
+
           <p>
             Age, malignancy history, and immunocompromise status are used independently by each
             guideline. Leaving one blank only affects the guideline(s) that need it.
