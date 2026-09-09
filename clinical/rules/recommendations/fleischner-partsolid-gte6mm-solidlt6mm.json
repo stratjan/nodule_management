@@ -1,0 +1,69 @@
+{
+  "ruleId": "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+  "revisionId": "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-solitary-part-solid-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-08" },
+  "provenanceAnchors": [
+    {
+      "role": "local-management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Fleischner narrative, part-solid subsection, management statement for whole-nodule diameter at or above 6 mm (intervals only; the Local SOP text states no solid-component stratification -- see primary-management anchor)"
+      }
+    },
+    {
+      "role": "primary-management",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 4 (solitary part-solid lung nodules), paragraph 2: \"For solitary part-solid nodules 6 mm or larger with a solid component less than 6 mm in diameter, follow-up is recommended at 3-6 months and then annually for a minimum of 5 years... at least one follow-up scan (3-6 months) is recommended to determine persistence or resolution. For persistent lesions, yearly follow-up for 5 years is recommended.\" This solid-component stratification and the exact >=6mm boundary are materially absent from the Local SOP text (see local-management anchor)."
+      }
+    },
+    {
+      "role": "whole-nodule-measurement",
+      "provenance": {
+        "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+        "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Figure 2 (average-diameter definition) and Figure 3 (subsolid nodule measurement example applying it) -- same anchor already governing fleischner-2017-average-diameter for pure-GGN (issue #17)"
+      }
+    },
+    {
+      "role": "solid-component-measurement",
+      "provenance": {
+        "sourceDocument": "Bankier AA, MacMahon H, Goo JM, Rubin GD, Schaefer-Prokop CM, Naidich DP. Recommendations for Measuring Pulmonary Nodules at CT: A Statement from the Fleischner Society",
+        "version": "Radiology. 2017;285(2):584-600. doi:10.1148/radiol.2017162894",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Figure 4 (part-solid nodule with an ill-defined solid component): solid component measured separately from the whole nodule; when the solid component's margins are ill-defined and measurements differ materially, the larger long-axis diameter is used given the clinical implications (per issue #23 R7 closeout)"
+      }
+    }
+  ],
+  "measurementBasis": "diameter",
+  "measurementConventionId": "fleischner-2017-average-diameter",
+  "solidComponentMeasurementConventionId": "fleischner-2017-solid-component-long-axis",
+  "diameterConditions": [
+    { "field": "nodule_size_mm", "op": "gte", "value": 6 },
+    { "field": "solid_component_size_mm", "op": "lt", "value": 6 }
+  ],
+  "recommendation": {
+    "persistenceConfirmation": {
+      "label": "CT to confirm persistence",
+      "timing": { "kind": "specified", "intervals": ["3-6 months"] }
+    },
+    "ifPersistent": {
+      "label": "CT surveillance",
+      "timing": { "kind": "specified", "intervals": ["annually until 5 years"] }
+    },
+    "rationale": "Fleischner recommends, for a solitary, part-solid, incidental pulmonary nodule with whole-nodule diameter >=6mm and a solid component <6mm in diameter, in a patient >=35 years old with no known malignancy history and not immunocompromised: a CT at 3-6 months to confirm persistence, and, only if the nodule is confirmed persistent, continued annual CT surveillance through 5 years. The Local SOP's own wording states only a simplified whole-nodule <6/>6mm trajectory with no solid-component distinction; the >=6mm boundary and the solid-component <6mm stratification are primary-Fleischner clarifications materially beyond the Local SOP text (see provenance anchors). A whole-nodule >=6mm nodule with a solid component >=6mm is a different, more suspicious Fleischner state and is explicitly out of scope for this rule."
+  }
+}

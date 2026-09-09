@@ -32,11 +32,11 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 9 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway), nothing else, no BTS content", () => {
+  it("includes exactly the 12 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(9);
+    expect(release.revisions).toHaveLength(12);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -50,9 +50,12 @@ describe("Rule-Set Release assembly", () => {
       "ACR-FLEISCHNER-GGN-GTE6MM",
       "ACR-FLEISCHNER-GGN-LT6MM",
       "ACR-FLEISCHNER-GT8TO30MM",
+      "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+      "ACR-FLEISCHNER-PARTSOLID-LT6MM",
       "ACR-S3-5TO8MM",
       "GR-1",
       "GR-2",
+      "GR-3",
       "SAR-FLEISCHNER",
       "SAR-S3",
     ]);
@@ -87,9 +90,23 @@ describe("Rule-Set Release assembly", () => {
     expect(() => buildRuleSetRelease(revisions)).toThrow(OverlappingRuleConditionsError);
   });
 
-  it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, and pure-GGN rules across pathways)", () => {
+  it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, pure-GGN, and part-solid rules across pathways)", () => {
     const revisions = loadApprovedPhase1Revisions();
     expect(() => buildRuleSetRelease(revisions)).not.toThrow();
-    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(9);
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(12);
+  });
+
+  it("issue #18: the mixed-field diameterConditions on ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM does not cause a false-positive overlap against ACR-FLEISCHNER-PARTSOLID-LT6MM (extractNumericRange returns null for a mixed-field array, so this pair is release-time-undecidable -- an accepted residual, not a defect; see the runtime-never-ambiguous regression in boundary.test.ts)", () => {
+    const revisions = loadApprovedPhase1Revisions();
+    const release = buildRuleSetRelease(revisions);
+    const partSolidRuleIds = release.revisions
+      .filter((r) => r.kind === "atomic-clinical-rule" && r.recommendationSourceId === "fleischner")
+      .map((r) => r.ruleId);
+    expect(partSolidRuleIds).toEqual(
+      expect.arrayContaining([
+        "ACR-FLEISCHNER-PARTSOLID-LT6MM",
+        "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+      ]),
+    );
   });
 });

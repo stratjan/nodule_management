@@ -21,6 +21,7 @@ const repoRoot = join(__dirname, "..");
 const ruleFiles = [
   "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json",
   "clinical/rules/pathway/gr-2-incidental-solitary-pure-ggn-initial.json",
+  "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json",
   "clinical/rules/applicability/s3-applicability.json",
   "clinical/rules/applicability/fleischner-applicability.json",
   "clinical/rules/recommendations/s3-5to8mm.json",
@@ -28,6 +29,8 @@ const ruleFiles = [
   "clinical/rules/recommendations/fleischner-gt8to30mm.json",
   "clinical/rules/recommendations/fleischner-ggn-lt6mm.json",
   "clinical/rules/recommendations/fleischner-ggn-gte6mm.json",
+  "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
+  "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
 ];
 
 function loadRevision(relativePath: string): RuleRevision {
@@ -68,6 +71,7 @@ const manifest: ReleaseManifest = {
     "No separately defined Local SOP applicability model exists -- deferred, not invented.",
     "The Local SOP source document itself appears procedurally unreleased (blank effective/release-date fields, unsigned).",
     "Local SOP states the pure ground-glass/non-solid nodule management boundary as \">6mm\"; this is treated (issue #17 clinical HITL approval) as an imprecise transcription of the underlying Fleischner 2017 source table, and the governed executable boundary for ACR-FLEISCHNER-GGN-GTE6MM is \">=6mm\" (6.0mm belongs to the surveillance bucket). This approval applies only to the Fleischner Recommendation Source for this pathway and does not generalize to S3/BTS or other subsolid-nodule sources.",
+    "Local SOP states the part-solid nodule management boundary as a simplified whole-nodule-only \"<6mm\"/\">6mm\" trajectory, with no solid-component stratification anywhere in the text. Per primary-source verification (issue #18, MacMahon et al. 2017 Recommendation 4), the governed executable boundary for the active branch is \">=6mm\", and a materially distinct solid-component <6mm/>=6mm stratification exists in the primary Fleischner guideline that is absent from the Local SOP text. Recorded as separate local-management/primary-management provenance anchors on ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM, never merged; applies only to the Fleischner Recommendation Source for the part-solid pathway.",
   ],
   notes: [
     "BTS is not available in this Rule-Set Release: it has neither a Source Applicability Rule nor an Atomic Clinical Rule of any Approval Status (Draft or Approved) in clinical/rules/. Its absence is explained here, not computed per-evaluation.",
@@ -75,6 +79,7 @@ const manifest: ReleaseManifest = {
     "ACR-FLEISCHNER-6TO8MM-r2 (superseding r1) is a documentation correction, not a Local SOP Version change (issue #20): it adds an explicit measurementConventionId declaration and switches from single to multi-anchor provenance. Its recommendation content and diameter thresholds are unchanged from r1.",
     "ACR-S3-5TO8MM-r2, ACR-FLEISCHNER-6TO8MM-r3, and ACR-FLEISCHNER-GT8TO30MM-r2 (each superseding its prior revision) are governance/documentation corrections, not Local SOP Version changes or clinical policy changes (issue #17): each adds the now-required explicit clinicalPathwayId binding (\"incidental-solitary-solid-initial\") introduced by this Release's second Clinical Pathway. Thresholds, recommendation content, measurement semantics, and provenance are otherwise unchanged from the prior revision.",
     "GR-2 / incidental-solitary-pure-ggn-initial (issue #17) is a new Clinical Pathway for the pure ground-glass/non-solid morphology, evaluated deterministically alongside GR-1 (evaluate-all, never first-match). ACR-FLEISCHNER-GGN-LT6MM and ACR-FLEISCHNER-GGN-GTE6MM are new, Fleischner-only Atomic Clinical Rules bound to it; S3 and BTS have no Atomic Clinical Rule for this pathway and produce no Source Evaluation Outcome for it. SAR-FLEISCHNER (source-global, unchanged) is reused unmodified for this pathway.",
+    "GR-3 / incidental-solitary-part-solid-initial (issue #18, Candidate B) is a new Clinical Pathway for the part-solid morphology, evaluated deterministically alongside GR-1/GR-2. ACR-FLEISCHNER-PARTSOLID-LT6MM (whole nodule <6mm, no routine follow-up) and ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM (whole nodule >=6mm AND solid component <6mm, persistence-surveillance) are new, Fleischner-only Atomic Clinical Rules bound to it. The second rule is this Release's first dual-measurement Atomic Clinical Rule: it independently resolves a whole-nodule diameter (measurementConventionId: fleischner-2017-average-diameter) and a solid-component diameter (solidComponentMeasurementConventionId: fleischner-2017-solid-component-long-axis, a new, distinct governed convention -- Bankier et al. 2017, Figure 4), stored in the new, structurally separate ClinicalInputState.solid_component_diameter_measurements container. Solid component >=6mm (including >8mm), growing solid component, and suspicious morphology are explicitly out of scope for this Release and correctly resolve to OUTSIDE_CURRENT_RULESET_SCOPE or INSUFFICIENT_INPUT, never a fabricated recommendation. S3 and BTS have no Atomic Clinical Rule for this pathway and produce no Source Evaluation Outcome for it. SAR-FLEISCHNER (source-global, unchanged) is reused unmodified for this pathway. No policy change to the existing solid or pure-GGN pathways; no screening/Lung-RADS support of any kind.",
   ],
 };
 releaseManifestSchema.parse(manifest);

@@ -1,4 +1,5 @@
 import type { FieldDef } from "../workflow/fields";
+import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 
 type FieldValue = string | number | boolean | undefined;
 
@@ -54,7 +55,17 @@ export function FieldInput({ field, value, onChange }: Props) {
         step={field.step ?? "1"}
         min={field.min}
         value={typeof value === "number" ? value : ""}
-        onChange={(e) => onChange(field.id, e.target.value === "" ? undefined : Number(e.target.value))}
+        onChange={(e) => {
+          // issue #18: step="1" alone does not prevent decimal entry in every browser/flow --
+          // wholeMmOnly fields explicitly reject (never round) a fractional committed value.
+          if (field.wholeMmOnly) {
+            const parsed = parseWholeMmDiameter(e.target.value);
+            if (parsed === "invalid") return;
+            onChange(field.id, parsed);
+            return;
+          }
+          onChange(field.id, e.target.value === "" ? undefined : Number(e.target.value));
+        }}
       />
     </label>
   );

@@ -1,8 +1,8 @@
-// Multi-pathway Clinical Pathway Gate selection (issue #17): evaluate-all, three-valued partial-
-// input classification (MATCHED/NOT_MATCHED/INDETERMINATE), typed fail-closed ambiguity, and
-// cross-pathway Atomic Clinical Rule isolation. Real GR-1/GR-2 content for the real-pathway
-// cases; a synthetic, non-clinical fixture pair (mirroring ruleAmbiguity.test.ts's convention)
-// for the ambiguous-match case only.
+// Multi-pathway Clinical Pathway Gate selection (issue #17, extended by issue #18 for GR-3):
+// evaluate-all, three-valued partial-input classification (MATCHED/NOT_MATCHED/INDETERMINATE),
+// typed fail-closed ambiguity, and cross-pathway Atomic Clinical Rule isolation. Real
+// GR-1/GR-2/GR-3 content for the real-pathway cases; a synthetic, non-clinical fixture pair
+// (mirroring ruleAmbiguity.test.ts's convention) for the ambiguous-match case only.
 import { describe, expect, it } from "vitest";
 import { evaluate, AmbiguousPathwayMatchError } from "../../src/engine/evaluate";
 import { buildRuleSetRelease } from "../../src/engine/releaseBuilder";
@@ -37,7 +37,7 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(2);
+    expect(trace.clinicalPathwayGates).toHaveLength(3);
   });
 
   it("pure-ground-glass input selects incidental-solitary-pure-ggn-initial", () => {
@@ -59,9 +59,26 @@ describe("pathway selection: real GR-1/GR-2", () => {
     });
   });
 
-  it("a morphology value matching neither gate, plus another missing gate field, is NO_PATHWAY_MATCHED (both gates definitively NOT_MATCHED, never masked by the other missing field)", () => {
+  it("part-solid input selects incidental-solitary-part-solid-initial (issue #18)", () => {
     const input: ClinicalInputState = {
       nodule_morphology: "part-solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+    };
+    const trace = evaluate(input, release);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-part-solid-initial",
+    });
+    expect(trace.clinicalPathwayGates).toHaveLength(3);
+  });
+
+  it("a morphology value matching no gate, plus another missing gate field, is NO_PATHWAY_MATCHED (all three gates definitively NOT_MATCHED, never masked by the other missing field)", () => {
+    const input: ClinicalInputState = {
+      nodule_morphology: "unknown-morphology",
       assessment_timepoint: "initial",
       nodule_count: 1,
       // assessment_context intentionally omitted
@@ -141,6 +158,43 @@ describe("cross-pathway Atomic Clinical Rule isolation (issue #17)", () => {
     expect(outcomeFor(trace, "fleischner")?.recommendation?.matchedRuleId).toBe(
       "ACR-FLEISCHNER-GGN-GTE6MM",
     );
+  });
+
+  it("a Solid input at a diameter also inside the part-solid >=6mm range never matches a part-solid rule (issue #18)", () => {
+    const input: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_diameter_measurements: [
+        { valueMm: 7, conventionId: "fleischner-2017-average-diameter" },
+      ],
+    };
+    const trace = evaluate(input, release);
+    expect(outcomeFor(trace, "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-6TO8MM",
+    );
+  });
+
+  it("a part-solid input never matches the Solid or pure-GGN Fleischner rules (issue #18)", () => {
+    const input: ClinicalInputState = {
+      nodule_morphology: "part-solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: [
+        { valueMm: 5, conventionId: "fleischner-2017-average-diameter" },
+      ],
+    };
+    const trace = evaluate(input, release);
+    const matchedRuleId = outcomeFor(trace, "fleischner")?.recommendation?.matchedRuleId;
+    expect(matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-LT6MM");
+    expect(matchedRuleId).not.toBe("ACR-FLEISCHNER-6TO8MM");
+    expect(matchedRuleId).not.toBe("ACR-FLEISCHNER-GGN-LT6MM");
   });
 });
 
