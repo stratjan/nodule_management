@@ -27,6 +27,8 @@ const RULE_FILES = [
   "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json",
   "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
   "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
+  "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json",
+  "clinical/rules/recommendations/s3-followup-volume-stable.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -359,6 +361,113 @@ describe("issue #18: part-solid pathway, dual-measurement rule, bidirectional so
     expect(() =>
       ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-ggn-gte6mm.json")),
     ).not.toThrow();
+  });
+});
+
+describe("issue #15 Candidate A0: clinical-condition-shaped Atomic Clinical Rule (measurementBasis optional, new conditions field)", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const FOLLOWUP_GATE_PATH = "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json";
+  const FOLLOWUP_RULE_PATH = "clinical/rules/recommendations/s3-followup-volume-stable.json";
+  const MEASUREMENT_RULE_PATH = "clinical/rules/recommendations/s3-5to8mm.json";
+  const VOLUME_PREFERRED_RULE_PATH = "clinical/rules/recommendations/s3-5to8mm.json";
+  const DUAL_MEASUREMENT_RULE_PATH =
+    "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json";
+
+  it("accepts incidental-solitary-solid-follow-up as a Pathway Gate clinicalPathwayId", () => {
+    expect(() => ruleRevisionSchema.parse(loadRaw(FOLLOWUP_GATE_PATH))).not.toThrow();
+  });
+
+  it("VALID: the new clinical-condition-shaped rule (conditions present, no measurementBasis) parses", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    expect(raw.measurementBasis).toBeUndefined();
+    expect(raw.diameterConditions).toBeUndefined();
+    expect(raw.conditions).toEqual([
+      { field: "s3_volume_stability_criterion_met", op: "eq", value: true },
+    ]);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("VALID: every existing measurement-shaped Atomic Clinical Rule still parses unchanged (regression)", () => {
+    const measurementFiles = [
+      "clinical/rules/recommendations/s3-5to8mm.json",
+      "clinical/rules/recommendations/fleischner-6to8mm.json",
+      "clinical/rules/recommendations/fleischner-gt8to30mm.json",
+      "clinical/rules/recommendations/fleischner-ggn-lt6mm.json",
+      "clinical/rules/recommendations/fleischner-ggn-gte6mm.json",
+      "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
+      "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
+    ];
+    for (const file of measurementFiles) {
+      const raw = loadRaw(file);
+      expect(raw.measurementBasis).toBeDefined();
+      expect(raw.conditions).toBeUndefined();
+      expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+    }
+  });
+
+  it("INVALID: both evaluation shapes present (conditions + measurementBasis/diameterConditions)", () => {
+    const raw = loadRaw(MEASUREMENT_RULE_PATH);
+    raw.conditions = [{ field: "s3_volume_stability_criterion_met", op: "eq", value: true }];
+    // raw still carries its original measurementBasis + diameterConditions.
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: conditions + diameterConditions, with no measurementBasis", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    raw.diameterConditions = [{ field: "nodule_size_mm", op: "gte", value: 5 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: conditions + volumeConditions, with no measurementBasis", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    raw.volumeConditions = [{ field: "nodule_volume_mm3", op: "gte", value: 80 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: conditions + measurementConventionId, with no measurementBasis", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    raw.measurementConventionId = "fleischner-2017-average-diameter";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: conditions + solidComponentMeasurementConventionId, with no measurementBasis", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    raw.solidComponentMeasurementConventionId = "fleischner-2017-solid-component-long-axis";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: neither evaluation shape present (no measurementBasis, no conditions)", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    delete raw.conditions;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: a clinical-condition-shaped rule's conditions array is empty", () => {
+    const raw = loadRaw(FOLLOWUP_RULE_PATH);
+    raw.conditions = [];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: a measurement-shaped rule missing required diameterConditions", () => {
+    const raw = loadRaw(MEASUREMENT_RULE_PATH);
+    delete raw.diameterConditions;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("INVALID: a volume-preferred rule missing required volumeConditions", () => {
+    const raw = loadRaw(VOLUME_PREFERRED_RULE_PATH);
+    expect(raw.measurementBasis).toBe("volume-preferred");
+    delete raw.volumeConditions;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("the dual-measurement part-solid rule (measurementConventionId + solidComponentMeasurementConventionId) is unaffected by the new refines", () => {
+    const raw = loadRaw(DUAL_MEASUREMENT_RULE_PATH);
+    expect(raw.conditions).toBeUndefined();
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
   });
 });
 

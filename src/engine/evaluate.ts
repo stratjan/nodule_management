@@ -12,6 +12,7 @@
 import { classifyConditions, evaluateConditions } from "./interpreter";
 import type {
   AtomicClinicalRuleRevision,
+  ClinicalCriterionBasis,
   ClinicalInputState,
   ClinicalPathwayGateResult,
   DecisionExecutionTrace,
@@ -32,8 +33,8 @@ import {
   isStructuredRecommendation,
 } from "./types";
 
-export const ENGINE_VERSION = "1.2.0";
-export const SCHEMA_VERSION = "1.2.0";
+export const ENGINE_VERSION = "1.3.0";
+export const SCHEMA_VERSION = "1.3.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -181,10 +182,30 @@ interface MeasurementsUsed {
   solidComponent?: { valueMm: number; conventionId: MeasurementConventionId };
 }
 
+/**
+ * issue #15 Candidate A0, final review #5605350412: the engine's own construction-time
+ * evaluation-basis choice, XOR-safe at compile time -- deliberately narrower than the public,
+ * intentionally flat/optional RecommendationPayload shape (types.ts). A measurement-shaped match
+ * can never carry clinicalCriterionUsed; a clinical-condition-shaped match can never carry
+ * measurementBasisUsed/measurementsUsed; neither arm can construct an empty basis; the two arms
+ * can never be combined. This type exists purely to keep evaluate.ts's own construction honest --
+ * it is never exported, never part of the public engine surface.
+ */
+type RecommendationEvaluationBasis =
+  | {
+      measurementBasisUsed: "diameter" | "volume";
+      measurementsUsed?: MeasurementsUsed;
+      clinicalCriterionUsed?: never;
+    }
+  | {
+      clinicalCriterionUsed: ClinicalCriterionBasis;
+      measurementBasisUsed?: never;
+      measurementsUsed?: never;
+    };
+
 function buildRecommendationPayload(
   rule: AtomicClinicalRuleRevision,
-  basisUsed: "diameter" | "volume",
-  measurementsUsed?: MeasurementsUsed,
+  evaluationBasis: RecommendationEvaluationBasis,
 ): RecommendationPayload {
   const content = buildRecommendationContentPayload(rule.recommendation);
 
@@ -195,8 +216,7 @@ function buildRecommendationPayload(
   return {
     matchedRuleId: rule.ruleId,
     matchedRevisionId: rule.revisionId,
-    measurementBasisUsed: basisUsed,
-    ...(measurementsUsed ? { measurementsUsed } : {}),
+    ...evaluationBasis,
     ...content,
     ...provenanceCarrier,
   } as RecommendationPayload;
@@ -215,13 +235,10 @@ function evaluateSingleAtomicRule(
 ): SingleRuleResult {
   const sourceId = rule.recommendationSourceId;
 
-  const buildRecommendation = (
-    basisUsed: "diameter" | "volume",
-    measurementsUsed?: MeasurementsUsed,
-  ): SourceEvaluationOutcome => ({
+  const buildRecommendation = (evaluationBasis: RecommendationEvaluationBasis): SourceEvaluationOutcome => ({
     recommendationSourceId: sourceId,
     state: "RECOMMENDATION",
-    recommendation: buildRecommendationPayload(rule, basisUsed, measurementsUsed),
+    recommendation: buildRecommendationPayload(rule, evaluationBasis),
   });
 
   const outOfScope = (basisUsed: "diameter" | "volume"): SourceEvaluationOutcome => ({
@@ -235,6 +252,32 @@ function evaluateSingleAtomicRule(
     state: "INSUFFICIENT_INPUT",
     reason: `Missing required input for rule-matching: ${missingFields.join(", ")}.`,
   });
+
+  // issue #15 Candidate A0: clinical-condition-shaped rules (no measurementBasis) are evaluated
+  // directly against their own `conditions` via the existing generic interpreter. No diameter/
+  // volume presence pre-check applies -- no physical measurement is involved in this rule kind,
+  // and none of the measurement-specific dispatch below (convention lookups, dual-measurement
+  // resolution, volume/diameter discordance) is reachable for it.
+  if (rule.measurementBasis === undefined) {
+    const result = evaluateConditions(rule.conditions!, input);
+    if (!result.allFieldsPresent) {
+      return { rule, outcome: insufficientInput(result.missingFields) };
+    }
+    if (result.matched) {
+      return { rule, outcome: buildRecommendation({ clinicalCriterionUsed: "clinician-attestation" }) };
+    }
+    return {
+      rule,
+      outcome: {
+        recommendationSourceId: sourceId,
+        state: "OUTSIDE_CURRENT_RULESET_SCOPE",
+        reason:
+          "Source applies and sufficient input was given, but the required clinical criterion " +
+          "was not met, and no Approved Atomic Clinical Rule in the Active Rule-Set Release " +
+          "covers this state.",
+      },
+    };
+  }
 
   if (rule.measurementBasis === "diameter") {
     // issue #20/#18: a rule that requires a specific measurement convention bypasses the plain
@@ -323,7 +366,9 @@ function evaluateSingleAtomicRule(
       }
       return {
         rule,
-        outcome: result.matched ? buildRecommendation("diameter", measurementsUsed) : outOfScope("diameter"),
+        outcome: result.matched
+          ? buildRecommendation({ measurementBasisUsed: "diameter", measurementsUsed })
+          : outOfScope("diameter"),
       };
     }
 
@@ -341,7 +386,10 @@ function evaluateSingleAtomicRule(
     if (!result.allFieldsPresent) {
       return { rule, outcome: insufficientInput(result.missingFields) };
     }
-    return { rule, outcome: result.matched ? buildRecommendation("diameter") : outOfScope("diameter") };
+    return {
+      rule,
+      outcome: result.matched ? buildRecommendation({ measurementBasisUsed: "diameter" }) : outOfScope("diameter"),
+    };
   }
 
   // volume-preferred (issue #20: untouched -- measurement-convention gating applies only to the
@@ -379,7 +427,7 @@ function evaluateSingleAtomicRule(
     diameterEval!.allFieldsPresent &&
     volumeEval!.matched !== diameterEval!.matched;
 
-  const outcome = matched ? buildRecommendation(basisUsed) : outOfScope(basisUsed);
+  const outcome = matched ? buildRecommendation({ measurementBasisUsed: basisUsed }) : outOfScope(basisUsed);
 
   if (discordant) {
     outcome.measurementDiscordance = true;

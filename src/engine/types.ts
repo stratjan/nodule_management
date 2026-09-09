@@ -56,7 +56,8 @@ interface RuleRevisionBase {
 export type ClinicalPathwayId =
   | "incidental-solitary-solid-initial"
   | "incidental-solitary-pure-ggn-initial"
-  | "incidental-solitary-part-solid-initial";
+  | "incidental-solitary-part-solid-initial"
+  | "incidental-solitary-solid-follow-up";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -212,7 +213,12 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * compatibility contract. Required in practice once a Release has more than one Pathway Gate,
    * enforced at release-build time, not via the type system. */
   clinicalPathwayId?: ClinicalPathwayId;
-  measurementBasis: MeasurementBasis;
+  /** Optional now (issue #15 Candidate A0) -- present on every measurement-shaped rule exactly as
+   * before (every existing revision already declares it, so this widening changes nothing about
+   * how they parse or evaluate); absent on a clinical-condition-shaped rule, which uses
+   * `conditions` below instead. Exactly one of measurementBasis/conditions is ever present,
+   * enforced by schema.ts's cross-field refine -- never both, never neither. */
+  measurementBasis?: MeasurementBasis;
   diameterConditions?: Condition[];
   volumeConditions?: Condition[];
   /** issue #20: which measurement convention this rule's diameterConditions require. Optional --
@@ -228,6 +234,15 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * the value up in ClinicalInputState.solid_component_diameter_measurements independently of the
    * whole-nodule lookup. */
   solidComponentMeasurementConventionId?: MeasurementConventionId;
+  /** issue #15 Candidate A0: the evaluation-condition array for a clinical-condition-shaped rule
+   * -- a rule whose match condition is a clinician-attested fact, not a physical nodule
+   * measurement (e.g. `s3_volume_stability_criterion_met`). Mutually exclusive with
+   * measurementBasis/diameterConditions/volumeConditions/measurementConventionId/
+   * solidComponentMeasurementConventionId, enforced by schema.ts's cross-field refine (never
+   * both, never neither). Uses the exact same fixed Condition vocabulary and the exact same
+   * evaluateConditions() interpreter as every other rule kind (ADR-0009) -- no new operator, no
+   * new evaluation model, no OR/NOT. */
+  conditions?: Condition[];
   recommendation: RecommendationContent;
 } & ProvenanceCarrier;
 
@@ -286,6 +301,14 @@ export interface ClinicalInputState {
   age?: number;
   known_malignancy_history?: boolean;
   immunocompromised?: boolean;
+  /** issue #15 Candidate A0: explicit clinician attestation that S3's own <25% volume-increase-
+   * over-approximately-one-year discharge criterion is met -- never computed from prior/current
+   * volumes or an elapsed interval, and never a generic stability/growth flag. `true` = explicitly
+   * confirmed met; `false` = explicitly confirmed not met (never turned into an inferred growth/
+   * work-up outcome by complement -- HITL comment #5603995097); absent = not yet supplied. This
+   * name deliberately encodes source + measurement type + exact criterion so a future VDT/
+   * Fleischner/BTS/>=25%-growth rule cannot silently reuse it. */
+  s3_volume_stability_criterion_met?: boolean;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---
@@ -297,6 +320,13 @@ export type SourceEvaluationOutcomeState =
   | "INSUFFICIENT_INPUT";
 
 /**
+ * issue #15 Candidate A0: closed vocabulary for a clinical-condition-shaped rule's evaluation
+ * basis, mirroring the ClinicalPathwayId/MeasurementConventionId closed-vocabulary precedent.
+ * Extend only when a second, genuinely distinct clinical-condition rule needs its own label.
+ */
+export type ClinicalCriterionBasis = "clinician-attestation";
+
+/**
  * Carries whichever recommendation form and provenance form the matched Atomic Clinical Rule
  * declared (issue #20) -- never both, never a legacy/structured or single/multi-anchor blend
  * synthesized by the engine.
@@ -305,7 +335,13 @@ export type RecommendationPayload = RecommendationContent &
   ProvenanceCarrier & {
     matchedRuleId: string;
     matchedRevisionId: string;
-    measurementBasisUsed: "diameter" | "volume";
+    /** Present only for a measurement-shaped Atomic Clinical Rule match (issue #20). Optional
+     * now (was required) -- absent, never fabricated, for a clinical-condition-shaped match
+     * (issue #15 Candidate A0). Mutually exclusive with clinicalCriterionUsed below; enforced by
+     * construction in evaluate.ts's buildRecommendationPayload() via an internal XOR union, not
+     * by this public type -- kept flat here so every existing measurement-based call site and
+     * test (`recommendation.measurementBasisUsed`) keeps compiling and passing unchanged. */
+    measurementBasisUsed?: "diameter" | "volume";
     /** issue #18: which specific convention-bound value(s) the matched rule actually consumed --
      * added because measurementBasisUsed answers "diameter vs volume" only, and cannot by itself
      * convey that a rule (e.g. the part-solid >=6mm rule) resolved two independent, differently-
@@ -315,7 +351,19 @@ export type RecommendationPayload = RecommendationContent &
       wholeNodule?: { valueMm: number; conventionId: MeasurementConventionId };
       solidComponent?: { valueMm: number; conventionId: MeasurementConventionId };
     };
+    /** issue #15 Candidate A0: present only for a clinical-condition-shaped Atomic Clinical Rule
+     * match -- the non-measurement evaluation basis. Mutually exclusive with measurementBasisUsed
+     * above; never both set for the same match. */
+    clinicalCriterionUsed?: ClinicalCriterionBasis;
   };
+
+/** Narrows a RecommendationPayload to its measurement-shaped arm, for callers (e.g.
+ * RecommendationView) that need to branch between the two evaluation bases safely. */
+export function hasMeasurementBasis(
+  payload: RecommendationPayload,
+): payload is RecommendationPayload & { measurementBasisUsed: "diameter" | "volume" } {
+  return payload.measurementBasisUsed !== undefined;
+}
 
 export interface SourceEvaluationOutcome {
   recommendationSourceId: string;

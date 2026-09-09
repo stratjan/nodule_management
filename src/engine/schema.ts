@@ -48,6 +48,7 @@ const clinicalPathwayIdSchema = z.enum([
   "incidental-solitary-solid-initial",
   "incidental-solitary-pure-ggn-initial",
   "incidental-solitary-part-solid-initial",
+  "incidental-solitary-solid-follow-up",
 ]);
 
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
@@ -168,7 +169,10 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   // validation (releaseBuilder.ts) enforces it in practice once a Release has more than one
   // Pathway Gate.
   clinicalPathwayId: clinicalPathwayIdSchema.optional(),
-  measurementBasis: z.enum(["diameter", "volume-preferred"]),
+  // issue #15 Candidate A0: optional now -- absent on a clinical-condition-shaped rule (see
+  // `conditions` below). Present on every measurement-shaped rule exactly as before. Exactly one
+  // of measurementBasis/conditions is enforced by the cross-field refines below.
+  measurementBasis: z.enum(["diameter", "volume-preferred"]).optional(),
   diameterConditions: z.array(conditionSchema).optional(),
   volumeConditions: z.array(conditionSchema).optional(),
   measurementConventionId: measurementConventionIdSchema.optional(),
@@ -176,6 +180,11 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   // refine below for the bidirectional invariant against diameterConditions' synthetic
   // "solid_component_size_mm" shadow field.
   solidComponentMeasurementConventionId: measurementConventionIdSchema.optional(),
+  // issue #15 Candidate A0: the generic evaluation-condition array for a clinical-condition-
+  // shaped rule -- mutually exclusive with measurementBasis/diameterConditions/volumeConditions/
+  // measurementConventionId/solidComponentMeasurementConventionId, enforced by the cross-field
+  // refines below. Uses the same fixed conditionSchema as every other rule kind (ADR-0009).
+  conditions: z.array(conditionSchema).optional(),
   recommendation: recommendationContentSchema,
   // issue #20: exactly one of provenance (single, legacy) / provenanceAnchors (multi-anchor) --
   // both optional here, enforced exactly-one-present by the cross-field refine below, following
@@ -195,8 +204,11 @@ export const ruleRevisionSchema = z
     atomicClinicalRuleRevisionSchema,
   ])
   .refine(
-    (rule) => rule.kind !== "atomic-clinical-rule" || (rule.diameterConditions?.length ?? 0) > 0,
-    "atomic-clinical-rule must define diameterConditions",
+    (rule) =>
+      rule.kind !== "atomic-clinical-rule" ||
+      rule.conditions !== undefined ||
+      (rule.diameterConditions?.length ?? 0) > 0,
+    "a measurement-shaped atomic-clinical-rule must define diameterConditions",
   )
   .refine(
     (rule) =>
@@ -205,6 +217,34 @@ export const ruleRevisionSchema = z
       (rule.volumeConditions?.length ?? 0) > 0,
     "volume-preferred atomic-clinical-rule must define volumeConditions",
   )
+  // issue #15 Candidate A0: an atomic-clinical-rule uses exactly one evaluation shape --
+  // measurement-shaped (measurementBasis present) XOR clinical-condition-shaped (conditions
+  // present), never both, never neither. This is the shape-selection guard; the two refines below
+  // it enforce the rest of each shape's own internal requirements.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule") return true;
+    const isMeasurementShaped = rule.measurementBasis !== undefined;
+    const isConditionShaped = rule.conditions !== undefined;
+    return isMeasurementShaped !== isConditionShaped;
+  }, "an atomic-clinical-rule must be either measurement-shaped (measurementBasis) or clinical-condition-shaped (conditions), never both, never neither")
+  // issue #15 Candidate A0: a clinical-condition-shaped rule's own conditions array must be
+  // non-empty -- mirrors the measurement-shaped diameterConditions-non-empty requirement above.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.conditions === undefined) return true;
+    return rule.conditions.length > 0;
+  }, "a clinical-condition-shaped atomic-clinical-rule's conditions must be non-empty")
+  // issue #15 Candidate A0: a clinical-condition-shaped rule (conditions present) must not also
+  // declare any measurement-only field -- a rule cannot be a non-measurement clinician-attested
+  // criterion and simultaneously claim a diameter/volume measurement basis for the same match.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.conditions === undefined) return true;
+    return (
+      rule.diameterConditions === undefined &&
+      rule.volumeConditions === undefined &&
+      rule.measurementConventionId === undefined &&
+      rule.solidComponentMeasurementConventionId === undefined
+    );
+  }, "a clinical-condition-shaped atomic-clinical-rule (conditions present) must not declare diameterConditions, volumeConditions, measurementConventionId, or solidComponentMeasurementConventionId")
   // ADR-0007: every Approved Rule Revision carries an explicit, recorded approval event (who,
   // when) -- approval is never implied by authorship or by approvalStatus alone. Structurally
   // impossible to parse an Approved revision without one.

@@ -23,7 +23,7 @@ export interface NumberFieldDef {
 }
 
 export interface BooleanFieldDef {
-  id: "known_malignancy_history" | "immunocompromised";
+  id: "known_malignancy_history" | "immunocompromised" | "s3_volume_stability_criterion_met";
   label: string;
   type: "boolean";
 }
@@ -52,7 +52,10 @@ export const pathwayFields: FieldDef[] = [
     id: "assessment_timepoint",
     label: "Assessment timepoint",
     type: "select",
-    options: [{ value: "initial", label: "Initial assessment" }],
+    options: [
+      { value: "initial", label: "Initial assessment" },
+      { value: "follow-up", label: "Follow-up assessment" },
+    ],
   },
   { id: "nodule_count", label: "Number of discrete nodules", type: "number", min: 1 },
 ];
@@ -68,4 +71,16 @@ export const applicabilityFields: FieldDef[] = [
   { id: "age", label: "Age (years)", type: "number", min: 0 },
   { id: "known_malignancy_history", label: "Known malignancy history", type: "boolean" },
   { id: "immunocompromised", label: "Immunocompromised", type: "boolean" },
+];
+
+/** Step 2, solid-follow-up pathway only (issue #15 Candidate A0): the S3 clinician-attested
+ * volume-stability criterion. Rendered only when the pathway-shaped input is solid/incidental/
+ * follow-up/solitary (App.tsx) -- optional here like every other Step-2 field; an unanswered
+ * value is itself a valid, intended INSUFFICIENT_INPUT outcome, not a blocked evaluation. */
+export const followUpFields: FieldDef[] = [
+  {
+    id: "s3_volume_stability_criterion_met",
+    label: "S3 criterion confirmed: volume increase <25% over approximately one year",
+    type: "boolean",
+  },
 ];

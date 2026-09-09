@@ -155,6 +155,27 @@ describe("effective-pathway-scoped overlap validation (issue #17 final architect
   });
 });
 
+describe("issue #15 Candidate A0: the real ACR-S3-FOLLOWUP-VOLUME-STABLE rule is guarded by the same binding invariants", () => {
+  function loadRealRevision(relativePath: string): RuleRevision {
+    const raw = JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+    return ruleRevisionSchema.parse(raw) as RuleRevision;
+  }
+
+  it("UnknownClinicalPathwayIdError still throws if the real rule's clinicalPathwayId were mistyped/retired", () => {
+    const gate = loadRealRevision("clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json");
+    const mistypedRuleRaw = JSON.parse(
+      readFileSync(
+        join(repoRoot, "clinical/rules/recommendations/s3-followup-volume-stable.json"),
+        "utf-8",
+      ),
+    );
+    mistypedRuleRaw.clinicalPathwayId = "incidental-solitary-part-solid-initial";
+    const mistypedRule = ruleRevisionSchema.parse(mistypedRuleRaw) as RuleRevision;
+
+    expect(() => buildRuleSetRelease([gate, mistypedRule])).toThrow(UnknownClinicalPathwayIdError);
+  });
+});
+
 describe("historical single-pathway Release JSON still parses and executes unchanged (issue #17, Q8 regression)", () => {
   // Real, already-committed historical Release artifact built before this slice existed: single
   // Pathway Gate (GR-1), Atomic Clinical Rules with no clinicalPathwayId at all.

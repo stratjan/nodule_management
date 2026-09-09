@@ -3,8 +3,12 @@ import { evaluate } from "../engine/evaluate";
 import type { ClinicalInputState, DecisionExecutionTrace } from "../engine/types";
 import { activeRelease } from "../data/activeRelease";
 import { activeManifest } from "../data/activeManifest";
-import { pathwayFields, measurementFields, applicabilityFields } from "../workflow/fields";
-import { canContinuePastPathwayStep, isNoduleCountOutOfScope } from "../workflow/pathwayNavigation";
+import { pathwayFields, measurementFields, applicabilityFields, followUpFields } from "../workflow/fields";
+import {
+  canContinuePastPathwayStep,
+  isNoduleCountOutOfScope,
+  shouldClearS3FollowUpCriterion,
+} from "../workflow/pathwayNavigation";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
 import { RecommendationView } from "./RecommendationView";
@@ -43,7 +47,13 @@ export function App() {
   const [solidComponentConventionConfirmed, setSolidComponentConventionConfirmed] = useState(false);
 
   const handleChange = (id: string, value: FieldValue) => {
-    setInput((prev) => ({ ...prev, [id]: value }));
+    setInput((prev) => {
+      const next: ClinicalInputState = { ...prev, [id]: value };
+      if (shouldClearS3FollowUpCriterion(id, value)) {
+        delete next.s3_volume_stability_criterion_met;
+      }
+      return next;
+    });
     // issue #20 review: the affirmation is only ever valid for the diameter value it was given
     // for -- any edit to that value (including clearing it) invalidates a prior affirmation, so
     // it must never silently carry over and get tagged onto a new, unaffirmed value.
@@ -89,8 +99,26 @@ export function App() {
     input.nodule_size_mm !== undefined &&
     input.nodule_size_mm >= 6;
 
+  // issue #15 Candidate A0: the solid follow-up pathway needs no diameter/volume measurement at
+  // all -- its step-2 measurement block (and the Fleischner/solid-component controls nested in
+  // it) is hidden whenever the timepoint is follow-up, regardless of morphology, since Candidate
+  // A0 introduces no measurement-based follow-up content for any morphology.
+  const isFollowUpTimepoint = input.assessment_timepoint === "follow-up";
+
+  // issue #15 Candidate A0: the S3 criterion question is shown only for the exact pathway shape
+  // GR-4 gates on (solid/incidental/follow-up/solitary) -- never for part-solid or pure-GGN
+  // follow-up-shaped input, which this Release has no follow-up rule for at all.
+  const showFollowUpCriterionInput =
+    input.nodule_morphology === "solid" &&
+    input.assessment_context === "incidental" &&
+    input.assessment_timepoint === "follow-up" &&
+    input.nodule_count === 1;
+
   const canConfirmPathway = canContinuePastPathwayStep(input);
-  const canEvaluate = hasMeasurement;
+  // issue #15 Candidate A0: the follow-up pathway is evaluable with no measurement field at all --
+  // an unanswered S3 criterion is itself a valid, intended INSUFFICIENT_INPUT outcome (G3), not a
+  // state the UI should block reaching. Unchanged for every existing initial-timepoint pathway.
+  const canEvaluate = hasMeasurement || isFollowUpTimepoint;
 
   const handleConfirmPathway = () => {
     if (!canConfirmPathway) return;
@@ -187,63 +215,90 @@ export function App() {
       {step === "clinical-details" && (
         <section aria-label="Clinical details">
           <h2>2. Nodule measurement and patient factors</h2>
-          <p>Enter diameter and/or volume &mdash; at least one is required.</p>
-          <div className="field-grid">
-            {measurementFields.map((field) => (
-              <FieldInput
-                key={field.id}
-                field={field}
-                value={input[field.id as keyof ClinicalInputState] as FieldValue}
-                onChange={handleChange}
-              />
-            ))}
-          </div>
-          <label className="field field-checkbox">
-            <input
-              type="checkbox"
-              checked={fleischnerConventionConfirmed}
-              disabled={!isWholeMmDiameter}
-              onChange={(e) => setFleischnerConventionConfirmed(e.target.checked)}
-            />
-            <span>
-              The diameter above was measured using Fleischner&apos;s average-diameter convention
-              (long-axis + perpendicular short-axis average, same plane, greatest-dimension plane,
-              rounded to the nearest whole mm). Required for any Fleischner recommendation at any
-              diameter, regardless of nodule morphology or pathway; leave unchecked if unsure.
-              {input.nodule_size_mm !== undefined && !isWholeMmDiameter && (
-                <> Only available for a whole-millimeter diameter -- this convention rounds to the
-                nearest whole mm before entry.</>
-              )}
-            </span>
-          </label>
 
-          {showSolidComponentInput && (
+          {!isFollowUpTimepoint && (
             <>
-              <label className="field">
-                <span>Solid-component diameter (mm)</span>
-                <input
-                  type="number"
-                  step="1"
-                  min={0}
-                  value={solidComponentSizeMm ?? ""}
-                  onChange={(e) => handleSolidComponentDiameterChange(e.target.value)}
-                />
-              </label>
+              <p>Enter diameter and/or volume &mdash; at least one is required.</p>
+              <div className="field-grid">
+                {measurementFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
               <label className="field field-checkbox">
                 <input
                   type="checkbox"
-                  checked={solidComponentConventionConfirmed}
-                  disabled={solidComponentSizeMm === undefined}
-                  onChange={(e) => setSolidComponentConventionConfirmed(e.target.checked)}
+                  checked={fleischnerConventionConfirmed}
+                  disabled={!isWholeMmDiameter}
+                  onChange={(e) => setFleischnerConventionConfirmed(e.target.checked)}
                 />
                 <span>
-                  The solid-component diameter above was measured separately from the whole
-                  nodule, using Fleischner&apos;s solid-component long-axis convention (if the
-                  solid component&apos;s margins are ill-defined and measurements differ, the
-                  larger long-axis value). Required for this recommendation; leave unchecked if
-                  unsure. Never copied from the whole-nodule diameter.
+                  The diameter above was measured using Fleischner&apos;s average-diameter
+                  convention (long-axis + perpendicular short-axis average, same plane,
+                  greatest-dimension plane, rounded to the nearest whole mm). Required for any
+                  Fleischner recommendation at any diameter, regardless of nodule morphology or
+                  pathway; leave unchecked if unsure.
+                  {input.nodule_size_mm !== undefined && !isWholeMmDiameter && (
+                    <> Only available for a whole-millimeter diameter -- this convention rounds to
+                    the nearest whole mm before entry.</>
+                  )}
                 </span>
               </label>
+
+              {showSolidComponentInput && (
+                <>
+                  <label className="field">
+                    <span>Solid-component diameter (mm)</span>
+                    <input
+                      type="number"
+                      step="1"
+                      min={0}
+                      value={solidComponentSizeMm ?? ""}
+                      onChange={(e) => handleSolidComponentDiameterChange(e.target.value)}
+                    />
+                  </label>
+                  <label className="field field-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={solidComponentConventionConfirmed}
+                      disabled={solidComponentSizeMm === undefined}
+                      onChange={(e) => setSolidComponentConventionConfirmed(e.target.checked)}
+                    />
+                    <span>
+                      The solid-component diameter above was measured separately from the whole
+                      nodule, using Fleischner&apos;s solid-component long-axis convention (if the
+                      solid component&apos;s margins are ill-defined and measurements differ, the
+                      larger long-axis value). Required for this recommendation; leave unchecked if
+                      unsure. Never copied from the whole-nodule diameter.
+                    </span>
+                  </label>
+                </>
+              )}
+            </>
+          )}
+
+          {showFollowUpCriterionInput && (
+            <>
+              <p>
+                Confirm whether the S3 volume-stability criterion is met for this follow-up
+                assessment. This records the clinician&apos;s own assessment against the S3
+                criterion (volume increase &lt;25% over approximately one year) &mdash; the app
+                does not calculate volume change or elapsed time from prior/current measurements.
+              </p>
+              <div className="field-grid">
+                {followUpFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
             </>
           )}
 

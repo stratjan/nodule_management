@@ -5,6 +5,7 @@ import type {
   RecommendationPayload,
 } from "../engine/types";
 import {
+  hasMeasurementBasis,
   hasMultiAnchorProvenance,
   isNoRoutineFollowUpRecommendation,
   isPersistenceSurveillanceRecommendation,
@@ -89,7 +90,14 @@ export function RecommendationView({ recommendation }: { recommendation: Recomme
       ) : (
         <ProvenanceLine label="Provenance" provenance={recommendation.provenance} />
       )}
-      <p className="basis">Measurement basis used: {recommendation.measurementBasisUsed}</p>
+      {/* issue #15 Candidate A0: a clinical-condition-shaped match (e.g. the S3 follow-up
+          attestation rule) used no physical measurement -- never render a fabricated
+          "Measurement basis used" line for it; show its own, accurate audit line instead. */}
+      {hasMeasurementBasis(recommendation) ? (
+        <p className="basis">Measurement basis used: {recommendation.measurementBasisUsed}</p>
+      ) : recommendation.clinicalCriterionUsed ? (
+        <p className="basis">Clinical criterion used: clinician attestation</p>
+      ) : null}
     </div>
   );
 }

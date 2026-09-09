@@ -1,0 +1,23 @@
+{
+  "ruleId": "ACR-S3-FOLLOWUP-VOLUME-STABLE",
+  "revisionId": "ACR-S3-FOLLOWUP-VOLUME-STABLE-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "s3",
+  "clinicalPathwayId": "incidental-solitary-solid-follow-up",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-09" },
+  "provenance": {
+    "sourceDocument": "Local SOP",
+    "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+    "originalLanguage": "German",
+    "sourceType": "Local SOP",
+    "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, volume-based discharge-criterion sentence (first of three OR-combined discharge conditions; the other two -- VDT >600 days and general-condition status -- are explicitly excluded from this slice per HITL comment #5603995097)"
+  },
+  "conditions": [
+    { "field": "s3_volume_stability_criterion_met", "op": "eq", "value": true }
+  ],
+  "recommendation": {
+    "noRoutineFollowUp": true,
+    "rationale": "S3 states that a solitary, solid, incidental pulmonary nodule under CT surveillance may be discharged from further routine follow-up once its volume increase over approximately one year is below the source's stated 25% threshold, in a patient >=18 years old with no known malignancy history and not immunocompromised. This slice represents only that explicitly-confirmed, clinician-attested discharge criterion -- the app does not calculate volume change or elapsed time, and the source's own approximate one-year timeframe is not converted into an exact numeric interval. A criterion explicitly not met does not, by itself, imply growth or trigger any work-up recommendation in this Rule-Set Release."
+  }
+}
