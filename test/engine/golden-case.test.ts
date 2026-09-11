@@ -274,3 +274,141 @@ describe("Golden Clinical Case (part-solid, whole nodule 7mm, solid component 5m
     ]);
   });
 });
+
+// Fifth Golden Clinical Case group (issue #15, Candidate A0; clinical HITL approval
+// #5603995097; architecture corrected per reviews #5604290019/#5605350412): the S3-only solid
+// follow-up positive discharge branch, its explicit-false/missing/not-applicable siblings, and
+// two isolation cases. Human-reviewed expected outcomes -- G1-G6 exactly as approved on #15.
+const followUpBaseInput: ClinicalInputState = {
+  nodule_morphology: "solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "follow-up",
+  nodule_count: 1,
+  age: 55,
+  known_malignancy_history: false,
+  immunocompromised: false,
+};
+
+describe("Golden Clinical Case G1 (solid follow-up, S3 volume-stability criterion confirmed) -- issue #15 Candidate A0", () => {
+  const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
+
+  it("passes the Clinical Pathway Gate onto the solid follow-up pathway", () => {
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-follow-up",
+    });
+  });
+
+  it("S3 produces RECOMMENDATION: no routine follow-up, clinician-attestation basis, no fabricated measurement basis", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedRuleId).toBe("ACR-S3-FOLLOWUP-VOLUME-STABLE");
+    expect((s3?.recommendation as any)?.noRoutineFollowUp).toBe(true);
+    expect(s3?.recommendation?.clinicalCriterionUsed).toBe("clinician-attestation");
+    expect(s3?.recommendation?.measurementBasisUsed).toBeUndefined();
+    expect(s3?.recommendation?.measurementsUsed).toBeUndefined();
+  });
+
+  it("Fleischner and BTS produce no Source Evaluation Outcome at all (no Atomic Clinical Rule bound to this pathway)", () => {
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+  });
+
+  it("Recommendation Set contains exactly the one RECOMMENDATION-state entry (S3)", () => {
+    expect(trace.recommendationSet).toHaveLength(1);
+    expect(trace.recommendationSet[0].recommendationSourceId).toBe("s3");
+  });
+});
+
+describe("Golden Clinical Case G2 (solid follow-up, S3 criterion explicitly not met) -- issue #15 Candidate A0", () => {
+  const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: false }, release);
+
+  it("S3 produces OUTSIDE_CURRENT_RULESET_SCOPE, never an inferred growth/work-up recommendation", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+    expect(s3?.recommendation).toBeUndefined();
+  });
+
+  it("Recommendation Set is empty -- no complement-inferred recommendation exists anywhere in this Release", () => {
+    expect(trace.recommendationSet).toHaveLength(0);
+  });
+});
+
+describe("Golden Clinical Case G3 (solid follow-up, S3 criterion not supplied) -- issue #15 Candidate A0", () => {
+  const trace = evaluate({ ...followUpBaseInput }, release);
+
+  it("S3 produces INSUFFICIENT_INPUT, with no diameter/volume field required to reach evaluation at all", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("INSUFFICIENT_INPUT");
+    expect(s3?.reason).toContain("s3_volume_stability_criterion_met");
+  });
+});
+
+describe("Golden Clinical Case G4 (solid follow-up, S3 applicability fails) -- issue #15 Candidate A0", () => {
+  const trace = evaluate(
+    { ...followUpBaseInput, known_malignancy_history: true, s3_volume_stability_criterion_met: true },
+    release,
+  );
+
+  it("S3 produces NOT_APPLICABLE -- applicability is still checked before the new rule", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("NOT_APPLICABLE");
+  });
+});
+
+describe("Golden Clinical Case G5 (pathway isolation: initial-assessment input with the follow-up field accidentally populated) -- issue #15 Candidate A0", () => {
+  const trace = evaluate(
+    {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      nodule_size_mm: 7,
+      nodule_volume_mm3: 180,
+      age: 55,
+      known_malignancy_history: false,
+      immunocompromised: false,
+      s3_volume_stability_criterion_met: true,
+    },
+    release,
+  );
+
+  it("the initial solid pathway remains selected, not the follow-up pathway", () => {
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-initial",
+    });
+  });
+
+  it("the new follow-up rule cannot activate; existing initial outcomes are unaffected", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.recommendation?.matchedRuleId).toBe("ACR-S3-5TO8MM");
+    expect(trace.sourceEvaluationOutcomes.map((o) => o.recommendationSourceId).sort()).toEqual([
+      "fleischner",
+      "s3",
+    ]);
+  });
+});
+
+describe("Golden Clinical Case G6 (morphology isolation: part-solid follow-up-shaped input) -- issue #15 Candidate A0", () => {
+  const trace = evaluate(
+    {
+      nodule_morphology: "part-solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      age: 55,
+      known_malignancy_history: false,
+      immunocompromised: false,
+      s3_volume_stability_criterion_met: true,
+    },
+    release,
+  );
+
+  it("no Clinical Pathway Gate matches this morphology/timepoint combination", () => {
+    expect(trace.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
+  });
+
+  it("the new S3 follow-up rule cannot activate; no Source Evaluation Outcome is produced", () => {
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
+  });
+});

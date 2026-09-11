@@ -37,7 +37,7 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(3);
+    expect(trace.clinicalPathwayGates).toHaveLength(4);
   });
 
   it("pure-ground-glass input selects incidental-solitary-pure-ggn-initial", () => {
@@ -73,7 +73,53 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-part-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(3);
+    expect(trace.clinicalPathwayGates).toHaveLength(4);
+  });
+
+  it("solid follow-up input selects incidental-solitary-solid-follow-up (issue #15 Candidate A0)", () => {
+    const input: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      ...baseApplicability,
+      s3_volume_stability_criterion_met: true,
+    };
+    const trace = evaluate(input, release);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-follow-up",
+    });
+    expect(trace.clinicalPathwayGates).toHaveLength(4);
+  });
+
+  it("GR-4 never co-matches GR-1/GR-2/GR-3 -- assessment_timepoint's initial/follow-up values are mutually exclusive by construction", () => {
+    const initialInput: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+    };
+    const followUpInput: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      ...baseApplicability,
+      s3_volume_stability_criterion_met: true,
+    };
+    expect(() => evaluate(initialInput, release)).not.toThrow();
+    expect(() => evaluate(followUpInput, release)).not.toThrow();
+    expect(evaluate(initialInput, release).pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-initial",
+    });
+    expect(evaluate(followUpInput, release).pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-solid-follow-up",
+    });
   });
 
   it("a morphology value matching no gate, plus another missing gate field, is NO_PATHWAY_MATCHED (all three gates definitively NOT_MATCHED, never masked by the other missing field)", () => {
@@ -89,7 +135,7 @@ describe("pathway selection: real GR-1/GR-2", () => {
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
-  it("missing morphology only, with every other GR-1/GR-2 field compatible, is INSUFFICIENT_INPUT (gates INDETERMINATE, not excluded)", () => {
+  it("missing morphology only, with every other GR-1/GR-2/GR-3 field compatible, is INSUFFICIENT_INPUT (those gates INDETERMINATE, not excluded)", () => {
     const input: ClinicalInputState = {
       assessment_context: "incidental",
       assessment_timepoint: "initial",
@@ -97,7 +143,17 @@ describe("pathway selection: real GR-1/GR-2", () => {
     };
     const trace = evaluate(input, release);
     expect(trace.pathwaySelection).toEqual({ state: "INSUFFICIENT_INPUT" });
-    expect(trace.clinicalPathwayGates.every((g) => g.state === "INDETERMINATE")).toBe(true);
+    // issue #15: GR-4 requires assessment_timepoint == "follow-up", which this input's supplied
+    // "initial" definitively contradicts -- a known contradiction is never masked by the still-
+    // missing morphology field, so GR-4 alone is NOT_MATCHED here, unlike GR-1/GR-2/GR-3 (which
+    // have nothing in this input that contradicts them, only the missing morphology).
+    const byPathway = Object.fromEntries(
+      trace.clinicalPathwayGates.map((g) => [g.clinicalPathwayId, g.state]),
+    );
+    expect(byPathway["incidental-solitary-solid-initial"]).toBe("INDETERMINATE");
+    expect(byPathway["incidental-solitary-pure-ggn-initial"]).toBe("INDETERMINATE");
+    expect(byPathway["incidental-solitary-part-solid-initial"]).toBe("INDETERMINATE");
+    expect(byPathway["incidental-solitary-solid-follow-up"]).toBe("NOT_MATCHED");
     expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
@@ -195,6 +251,32 @@ describe("cross-pathway Atomic Clinical Rule isolation (issue #17)", () => {
     expect(matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-LT6MM");
     expect(matchedRuleId).not.toBe("ACR-FLEISCHNER-6TO8MM");
     expect(matchedRuleId).not.toBe("ACR-FLEISCHNER-GGN-LT6MM");
+  });
+
+  it("a solid initial-assessment input never matches the follow-up S3 rule, and vice versa (issue #15 Candidate A0)", () => {
+    const initialInput: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 1,
+      ...baseApplicability,
+      nodule_size_mm: 7,
+      nodule_volume_mm3: 180,
+    };
+    const followUpInput: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      ...baseApplicability,
+      s3_volume_stability_criterion_met: true,
+    };
+    const initialTrace = evaluate(initialInput, release);
+    const followUpTrace = evaluate(followUpInput, release);
+    expect(outcomeFor(initialTrace, "s3")?.recommendation?.matchedRuleId).toBe("ACR-S3-5TO8MM");
+    expect(outcomeFor(followUpTrace, "s3")?.recommendation?.matchedRuleId).toBe(
+      "ACR-S3-FOLLOWUP-VOLUME-STABLE",
+    );
   });
 });
 

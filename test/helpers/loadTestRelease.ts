@@ -12,6 +12,7 @@ const RULE_FILES = [
   "clinical/rules/pathway/gr-1-incidental-solitary-solid-initial.json",
   "clinical/rules/pathway/gr-2-incidental-solitary-pure-ggn-initial.json",
   "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json",
+  "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json",
   "clinical/rules/applicability/s3-applicability.json",
   "clinical/rules/applicability/fleischner-applicability.json",
   "clinical/rules/recommendations/s3-5to8mm.json",
@@ -21,6 +22,7 @@ const RULE_FILES = [
   "clinical/rules/recommendations/fleischner-ggn-gte6mm.json",
   "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
   "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
+  "clinical/rules/recommendations/s3-followup-volume-stable.json",
 ];
 
 export function loadApprovedPhase1Revisions(): RuleRevision[] {

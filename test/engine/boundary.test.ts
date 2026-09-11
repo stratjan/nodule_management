@@ -568,7 +568,7 @@ describe("part-solid pathway (issue #18)", () => {
     });
   });
 
-  it("PR #24 review: engineVersion/schemaVersion report 1.2.0 -- this additive evolution (new ClinicalPathwayId, MeasurementConventionId, Atomic-rule field, dual-measurement semantics, measurementsUsed trace shape) must not silently claim the prior 1.1.0 contract", () => {
+  it("issue #15 Candidate A0: engineVersion/schemaVersion report 1.3.0 -- this additive evolution (new ClinicalPathwayId, clinical-condition-shaped Atomic Rule, optional measurementBasis, new conditions field, new ClinicalInputState field, new recommendation trace/audit field) must not silently claim the prior 1.2.0 contract", () => {
     const input: ClinicalInputState = {
       ...partSolidBasePathway,
       ...baseApplicability,
@@ -576,8 +576,8 @@ describe("part-solid pathway (issue #18)", () => {
       nodule_diameter_measurements: fleischnerMeasurement(5),
     };
     const trace = evaluate(input, release);
-    expect(trace.engineVersion).toBe("1.2.0");
-    expect(trace.schemaVersion).toBe("1.2.0");
+    expect(trace.engineVersion).toBe("1.3.0");
+    expect(trace.schemaVersion).toBe("1.3.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {

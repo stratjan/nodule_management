@@ -1,0 +1,21 @@
+{
+  "ruleId": "GR-4",
+  "revisionId": "GR-4-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-09" },
+  "provenance": {
+    "sourceDocument": "GitHub issue #15 (final clinical/architecture approval, spec review)",
+    "version": "issue #15 Candidate A0 final spec review",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Issue #15, Candidate A0 implementation spec (comment #5604122492), \"Pathway identity\" section"
+  },
+  "clinicalPathwayId": "incidental-solitary-solid-follow-up",
+  "conditions": [
+    { "field": "nodule_morphology", "op": "eq", "value": "solid" },
+    { "field": "assessment_context", "op": "eq", "value": "incidental" },
+    { "field": "assessment_timepoint", "op": "eq", "value": "follow-up" },
+    { "field": "nodule_count", "op": "eq", "value": 1 }
+  ]
+}

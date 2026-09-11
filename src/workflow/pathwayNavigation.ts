@@ -17,3 +17,27 @@ export function canContinuePastPathwayStep(input: Partial<ClinicalInputState>): 
   );
   return allPathwayFieldsAnswered && !isNoduleCountOutOfScope(input);
 }
+
+/**
+ * issue #15 Candidate A0: pure decision for App.tsx's handleChange -- whether an edit to one of
+ * the four pathway-identity fields should clear a previously-answered S3 follow-up attestation
+ * (`s3_volume_stability_criterion_met`). The attestation is only ever meaningful for the exact
+ * solid/incidental/follow-up/solitary pathway shape; any edit that moves one of those four fields
+ * away from the value that shape requires invalidates a prior attestation, so it must never
+ * silently carry over onto a Clinical Input State it was never given for. Extracted as its own
+ * pure predicate (mirroring canContinuePastPathwayStep/isNoduleCountOutOfScope above) so this
+ * reset rule is unit-testable without a React component harness. Editing any OTHER field
+ * (including the S3 applicability facts age/known_malignancy_history/immunocompromised, and the
+ * attestation field itself) must never clear it.
+ */
+export function shouldClearS3FollowUpCriterion(
+  id: string,
+  value: string | number | boolean | undefined,
+): boolean {
+  return (
+    (id === "nodule_morphology" && value !== "solid") ||
+    (id === "assessment_timepoint" && value !== "follow-up") ||
+    (id === "assessment_context" && value !== "incidental") ||
+    (id === "nodule_count" && value !== 1)
+  );
+}
