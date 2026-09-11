@@ -33,7 +33,7 @@ import {
   isStructuredRecommendation,
 } from "./types";
 
-export const ENGINE_VERSION = "1.3.0";
+export const ENGINE_VERSION = "1.4.0";
 export const SCHEMA_VERSION = "1.3.0";
 
 /**
@@ -358,6 +358,91 @@ function evaluateSingleAtomicRule(
           conventionId: requiredSolidComponentId,
         };
       }
+
+      const shadowedInput = shadowedRecord as unknown as ClinicalInputState;
+      const result = evaluateConditions(rule.diameterConditions!, shadowedInput);
+      if (!result.allFieldsPresent) {
+        return { rule, outcome: insufficientInput(result.missingFields) };
+      }
+      return {
+        rule,
+        outcome: result.matched
+          ? buildRecommendation({ measurementBasisUsed: "diameter", measurementsUsed })
+          : outOfScope("diameter"),
+      };
+    }
+
+    // issue #26: a rule may require only the solid-component operand, independent of any
+    // whole-nodule measurement -- Fleischner Recommendation 4's solid-component->8mm escalation
+    // trigger states no whole-nodule threshold of its own. Resolving this operand must not
+    // require a whole-nodule measurementConventionId merely to reach it -- that would impose an
+    // engine-structural input requirement the source itself does not state. This branch is
+    // reachable only when the rule declares no measurementConventionId, so a whole-nodule
+    // measurement present in the Clinical Input State is never read here and cannot affect this
+    // rule's match.
+    if (rule.solidComponentMeasurementConventionId !== undefined) {
+      const requiredSolidComponentId = rule.solidComponentMeasurementConventionId;
+      const solidComponentResolution = resolveConventionBoundMeasurement(
+        input.solid_component_diameter_measurements,
+        requiredSolidComponentId,
+      );
+      if (solidComponentResolution.state === "missing") {
+        // issue #26 (implementation finding, not part of the approved spec's enumerated cases):
+        // Candidate C has no independent whole-nodule condition of its own and therefore nothing
+        // to pre-check with, unlike Candidate B's wholeNoduleOnlyConditions short-circuit above.
+        // Without this check, a whole-nodule <6mm input with no solid-component measurement
+        // supplied at all (State A -- the UI never even asks for one below 6mm, and
+        // Recommendation 4 itself states a discrete solid component "cannot be reliably defined"
+        // there) would report INSUFFICIENT_INPUT here and, via evaluateAtomicRulesForSource's
+        // INSUFFICIENT_INPUT precedence, silently mask ACR-FLEISCHNER-PARTSOLID-LT6MM's own valid
+        // RECOMMENDATION for that same input. This reads an existing, independently governed
+        // measurement (the same fleischner-2017-average-diameter convention Rule 1/Candidate B
+        // already require) only to decide how to honestly REPORT missing solid-component data --
+        // it adds no condition to this rule's own diameterConditions, and it does not change
+        // whether or what Candidate C matches for any input where a solid-component measurement
+        // IS supplied (the whole<6mm + solid>8mm combination below still resolves and still
+        // produces the required AmbiguousRuleMatchError against Rule 1, unaffected by this
+        // check, since it only applies when the solid-component operand is missing entirely).
+        const wholeNoduleResolution = resolveConventionBoundMeasurement(
+          input.nodule_diameter_measurements,
+          "fleischner-2017-average-diameter",
+        );
+        if (wholeNoduleResolution.state === "resolved" && wholeNoduleResolution.valueMm < 6) {
+          return {
+            rule,
+            outcome: {
+              recommendationSourceId: sourceId,
+              state: "OUTSIDE_CURRENT_RULESET_SCOPE",
+              reason:
+                "Whole-nodule diameter resolved below 6mm; Recommendation 4 states a discrete " +
+                "solid component cannot be reliably defined for a part-solid nodule this small, " +
+                "so no solid-component measurement is expected and this rule does not apply.",
+            },
+          };
+        }
+      }
+      if (solidComponentResolution.state !== "resolved") {
+        return {
+          rule,
+          outcome: insufficientInputForMeasurement(
+            solidComponentResolution,
+            "solid-component",
+            requiredSolidComponentId,
+            sourceId,
+          ),
+        };
+      }
+
+      const shadowedRecord: Record<string, unknown> = {
+        ...input,
+        solid_component_size_mm: solidComponentResolution.valueMm,
+      };
+      const measurementsUsed: MeasurementsUsed = {
+        solidComponent: {
+          valueMm: solidComponentResolution.valueMm,
+          conventionId: requiredSolidComponentId,
+        },
+      };
 
       const shadowedInput = shadowedRecord as unknown as ClinicalInputState;
       const result = evaluateConditions(rule.diameterConditions!, shadowedInput);

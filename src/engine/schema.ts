@@ -268,7 +268,9 @@ export const ruleRevisionSchema = z
   // must never be authorable with a condition on it while omitting the convention-bound resolver
   // that supplies it (declaring the field with no convention binding), and declaring the binding
   // with no condition that actually uses it would be a pointless, unenforceable requirement
-  // (final spec review, correction 2).
+  // (final spec review, correction 2). issue #26: this binding is intentionally independent of
+  // measurementConventionId (whole-nodule) -- a rule may declare solidComponentMeasurementConventionId
+  // alone, with no whole-nodule convention at all, and evaluate.ts resolves it standalone.
   .refine((rule) => {
     if (rule.kind !== "atomic-clinical-rule") return true;
     const hasSolidComponentCondition = (rule.diameterConditions ?? []).some(

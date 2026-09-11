@@ -275,6 +275,75 @@ describe("Golden Clinical Case (part-solid, whole nodule 7mm, solid component 5m
   });
 });
 
+// Golden Clinical Case (issue #26, Candidate C): part-solid, solid component >8mm, no
+// independent whole-nodule threshold. Human-reviewed and approved via #26's grilling/spec-review
+// comment history (clinical/source grilling, architecture-review correction, State-A x State-D
+// re-grilling, final spec approval -- all on issue #26). Whole-nodule 10mm is representative
+// only -- any value >=6mm is equally valid per the source's own text (no independent whole-nodule
+// threshold), confirmed by a dedicated boundary regression in boundary.test.ts rather than
+// repeated here.
+const goldenCasePartSolidStateDInput: ClinicalInputState = {
+  nodule_morphology: "part-solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 1,
+  nodule_size_mm: 10,
+  nodule_diameter_measurements: [{ valueMm: 10, conventionId: "fleischner-2017-average-diameter" }],
+  solid_component_diameter_measurements: [
+    { valueMm: 9, conventionId: "fleischner-2017-solid-component-long-axis" },
+  ],
+  age: 55,
+  known_malignancy_history: false,
+  immunocompromised: false,
+};
+
+describe("Golden Clinical Case (part-solid, whole nodule 10mm, solid component 9mm, age 55, solitary, no exclusions) -- issue #26 State D", () => {
+  const trace = evaluate(goldenCasePartSolidStateDInput, release);
+
+  it("passes the Clinical Pathway Gate onto the part-solid pathway", () => {
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-solitary-part-solid-initial",
+    });
+  });
+
+  it("Fleischner produces RECOMMENDATION via the solid-component->8mm rule, structured coequal-actions form", () => {
+    const fleischner = trace.sourceEvaluationOutcomes.find(
+      (o) => o.recommendationSourceId === "fleischner",
+    );
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM");
+
+    const recommendation = fleischner?.recommendation as any;
+    expect(recommendation.actions).toEqual([
+      { label: "PET/CT", timing: { kind: "not-specified-by-source" } },
+      { label: "Biopsy/tissue sampling", timing: { kind: "not-specified-by-source" } },
+      { label: "Resection", timing: { kind: "not-specified-by-source" } },
+    ]);
+
+    const anchors = recommendation.provenanceAnchors;
+    expect(anchors).toHaveLength(2);
+    expect(anchors.map((a: any) => a.role).sort()).toEqual([
+      "primary-management",
+      "solid-component-measurement",
+    ]);
+  });
+
+  it("the recommendation records only the solid-component measurement used -- no wholeNodule key, even though a whole-nodule measurement was supplied", () => {
+    const fleischner = trace.sourceEvaluationOutcomes.find(
+      (o) => o.recommendationSourceId === "fleischner",
+    );
+    expect(fleischner?.recommendation?.measurementBasisUsed).toBe("diameter");
+    expect(fleischner?.recommendation?.measurementsUsed).toEqual({
+      solidComponent: { valueMm: 9, conventionId: "fleischner-2017-solid-component-long-axis" },
+    });
+  });
+
+  it("S3 and BTS produce no Source Evaluation Outcome at all (no Atomic Clinical Rule bound to this pathway)", () => {
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(1);
+  });
+});
+
 // Fifth Golden Clinical Case group (issue #15, Candidate A0; clinical HITL approval
 // #5603995097; architecture corrected per reviews #5604290019/#5605350412): the S3-only solid
 // follow-up positive discharge branch, its explicit-false/missing/not-applicable siblings, and
