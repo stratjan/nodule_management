@@ -27,6 +27,7 @@ const RULE_FILES = [
   "clinical/rules/pathway/gr-3-incidental-solitary-part-solid-initial.json",
   "clinical/rules/recommendations/fleischner-partsolid-lt6mm.json",
   "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
+  "clinical/rules/recommendations/fleischner-partsolid-solidgt8mm.json",
   "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json",
   "clinical/rules/recommendations/s3-followup-volume-stable.json",
 ];
@@ -361,6 +362,106 @@ describe("issue #18: part-solid pathway, dual-measurement rule, bidirectional so
     expect(() =>
       ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/fleischner-ggn-gte6mm.json")),
     ).not.toThrow();
+  });
+});
+
+describe("issue #26: operandInapplicabilityPreconditions (architecture-review correction, generic missing-operand exception)", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const SOLIDGT8_PATH = "clinical/rules/recommendations/fleischner-partsolid-solidgt8mm.json";
+
+  it("accepts the real governed rule, with its operandInapplicabilityPreconditions entry intact", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    expect(raw.operandInapplicabilityPreconditions).toHaveLength(1);
+    expect(raw.operandInapplicabilityPreconditions[0]).toMatchObject({
+      operand: "solidComponent",
+      whenOperand: "wholeNodule",
+      whenConventionId: "fleischner-2017-average-diameter",
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects operand === whenOperand (a precondition cannot excuse itself)", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.operandInapplicabilityPreconditions[0].whenOperand = "solidComponent";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects an operand: \"solidComponent\" precondition on a rule with no solidComponentMeasurementConventionId", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    delete raw.solidComponentMeasurementConventionId;
+    // diameterConditions still references solid_component_size_mm, which independently makes
+    // this an invalid rule too (bidirectional refine, issue #18) -- remove that as well so this
+    // test isolates the operandInapplicabilityPreconditions refine specifically.
+    raw.diameterConditions = [{ field: "solid_component_size_mm", op: "gt", value: 8 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects an operand: \"wholeNodule\" precondition on a rule with no measurementConventionId", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.operandInapplicabilityPreconditions[0].operand = "wholeNodule";
+    raw.operandInapplicabilityPreconditions[0].whenOperand = "solidComponent";
+    // measurementConventionId is not declared on this rule at all -- "wholeNodule" is not one of
+    // its own declared operands.
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts an operand: \"wholeNodule\" precondition once the rule also declares measurementConventionId", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.measurementConventionId = "fleischner-2017-average-diameter";
+    raw.operandInapplicabilityPreconditions[0].operand = "wholeNodule";
+    raw.operandInapplicabilityPreconditions[0].whenOperand = "solidComponent";
+    raw.operandInapplicabilityPreconditions[0].whenConventionId = "fleischner-2017-solid-component-long-axis";
+    raw.operandInapplicabilityPreconditions[0].whenConditions = [
+      { field: "solid_component_size_mm", op: "gt", value: 8 },
+    ];
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("rejects operandInapplicabilityPreconditions on a volume-preferred rule (only diameter-basis is supported by this first contract version)", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.measurementBasis = "volume-preferred";
+    raw.volumeConditions = [{ field: "nodule_volume_mm3", op: "gt", value: 500 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects operandInapplicabilityPreconditions on a clinical-condition-shaped rule", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    delete raw.measurementBasis;
+    delete raw.diameterConditions;
+    delete raw.solidComponentMeasurementConventionId;
+    raw.conditions = [{ field: "some_clinician_attested_fact", op: "eq", value: true }];
+    // operandInapplicabilityPreconditions is left in place -- still invalid on its own, since a
+    // conditions-shaped rule may declare no measurement-only field at all.
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects whenConditions referencing a field other than the synthetic shadow field whenOperand resolves to", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.operandInapplicabilityPreconditions[0].whenConditions = [{ field: "age", op: "gte", value: 35 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects whenConditions referencing the opposite operand's shadow field (wholeNodule's own field on a whenOperand: wholeNodule entry expects nodule_size_mm, not solid_component_size_mm)", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.operandInapplicabilityPreconditions[0].whenConditions = [
+      { field: "solid_component_size_mm", op: "lt", value: 6 },
+    ];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("accepts more than one precondition entry for the same operand (OR semantics documented, not tested here -- see test/engine/operandInapplicability.test.ts for the evaluate()-level OR behavior)", () => {
+    const raw = loadRaw(SOLIDGT8_PATH);
+    raw.operandInapplicabilityPreconditions.push({
+      operand: "solidComponent",
+      whenOperand: "wholeNodule",
+      whenConventionId: "fleischner-2017-average-diameter",
+      whenConditions: [{ field: "nodule_size_mm", op: "eq", value: 0 }],
+      provenance: raw.operandInapplicabilityPreconditions[0].provenance,
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
   });
 });
 

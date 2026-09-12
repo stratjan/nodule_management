@@ -1,6 +1,6 @@
 {
-  "releaseId": "rel-885bbd84cf05f2c5",
-  "createdAt": "2026-09-11T22:24:16.351Z",
+  "releaseId": "rel-fb4eb398cb3ae65d",
+  "createdAt": "2026-09-12T00:29:15.515Z",
   "revisions": [
     {
       "ruleId": "GR-1",
@@ -712,6 +712,27 @@
         }
       ],
       "solidComponentMeasurementConventionId": "fleischner-2017-solid-component-long-axis",
+      "operandInapplicabilityPreconditions": [
+        {
+          "operand": "solidComponent",
+          "whenOperand": "wholeNodule",
+          "whenConventionId": "fleischner-2017-average-diameter",
+          "whenConditions": [
+            {
+              "field": "nodule_size_mm",
+              "op": "lt",
+              "value": 6
+            }
+          ],
+          "provenance": {
+            "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+            "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+            "originalLanguage": "English",
+            "sourceType": "Source Guideline",
+            "locator": "Recommendation 4, State A (whole nodule <6mm): \"In practice, discrete solid components cannot be reliably defined in such small nodules, and they should be treated similar to the way in which pure ground-glass lesions of equivalent size are treated.\" Source basis for treating a missing solid-component measurement as not applicable, rather than a data gap, once whole-nodule diameter independently resolves below 6mm under fleischner-2017-average-diameter."
+          }
+        }
+      ],
       "recommendation": {
         "actions": [
           {

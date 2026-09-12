@@ -1,6 +1,7 @@
 // Zod schemas validating canonical clinical rule JSON (ADR-0006: schema/tooling around the
 // data, never the source of truth itself). Every schema here mirrors types.ts exactly.
 import { z } from "zod";
+import { OPERAND_SHADOW_FIELD } from "./types";
 
 const approvalStatusSchema = z.enum(["Draft", "Approved", "Superseded", "Rejected"]);
 
@@ -161,6 +162,39 @@ const provenanceAnchorSchema = z
   })
   .strict();
 
+// issue #26: closed, machine-readable vocabulary -- mirrors MeasurementOperandTarget in types.ts.
+const measurementOperandTargetSchema = z.enum(["wholeNodule", "solidComponent"]);
+
+// issue #26: a governed, source-cited exception to "a missing required operand is
+// INSUFFICIENT_INPUT" -- see OperandInapplicabilityPrecondition's doc comment in types.ts for the
+// full contract. `whenConditions` combine as AND (the existing evaluateConditions() semantics,
+// unchanged); multiple precondition entries on one rule combine as OR (evaluate.ts consults each
+// in turn and excuses the operand if any one matches) -- no new boolean/rules language is
+// introduced for either combination (ADR-0009).
+const operandInapplicabilityPreconditionSchema = z
+  .object({
+    operand: measurementOperandTargetSchema,
+    whenOperand: measurementOperandTargetSchema,
+    whenConventionId: measurementConventionIdSchema,
+    whenConditions: z.array(conditionSchema).min(1),
+    provenance: provenanceSchema,
+  })
+  .strict()
+  .refine(
+    (p) => p.operand !== p.whenOperand,
+    "operand and whenOperand must differ -- a precondition can never excuse itself",
+  )
+  // issue #26: a precondition may reason ONLY about the operand it names in whenOperand, via the
+  // exact synthetic shadow field that operand resolves to (OPERAND_SHADOW_FIELD, issue #18's own
+  // shadowing convention) -- never age, applicability fields, the opposite operand, or any other
+  // field. This is deliberately narrower than the generic conditionSchema/Condition[] vocabulary
+  // used everywhere else, to keep this a bounded exception mechanism, not a general condition
+  // language over the whole Clinical Input State.
+  .refine(
+    (p) => p.whenConditions.every((c) => c.field === OPERAND_SHADOW_FIELD[p.whenOperand]),
+    "whenConditions may only reference the synthetic shadow field whenOperand resolves to (nodule_size_mm for wholeNodule, solid_component_size_mm for solidComponent)",
+  );
+
 export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   kind: z.literal("atomic-clinical-rule"),
   recommendationSourceId: z.string().min(1),
@@ -180,6 +214,13 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   // refine below for the bidirectional invariant against diameterConditions' synthetic
   // "solid_component_size_mm" shadow field.
   solidComponentMeasurementConventionId: measurementConventionIdSchema.optional(),
+  // issue #26: governed, source-cited exceptions to "a missing required operand is
+  // INSUFFICIENT_INPUT" -- see operandInapplicabilityPreconditionSchema above and
+  // OperandInapplicabilityPrecondition's doc comment in types.ts. Optional; the cross-field
+  // refines below enforce (a) mutual exclusivity with clinical-condition-shaped rules, (b)
+  // measurementBasis === "diameter" only for this first contract version, (c) each entry's
+  // `operand` must correspond to an operand this same rule actually declares.
+  operandInapplicabilityPreconditions: z.array(operandInapplicabilityPreconditionSchema).optional(),
   // issue #15 Candidate A0: the generic evaluation-condition array for a clinical-condition-
   // shaped rule -- mutually exclusive with measurementBasis/diameterConditions/volumeConditions/
   // measurementConventionId/solidComponentMeasurementConventionId, enforced by the cross-field
@@ -242,9 +283,10 @@ export const ruleRevisionSchema = z
       rule.diameterConditions === undefined &&
       rule.volumeConditions === undefined &&
       rule.measurementConventionId === undefined &&
-      rule.solidComponentMeasurementConventionId === undefined
+      rule.solidComponentMeasurementConventionId === undefined &&
+      rule.operandInapplicabilityPreconditions === undefined
     );
-  }, "a clinical-condition-shaped atomic-clinical-rule (conditions present) must not declare diameterConditions, volumeConditions, measurementConventionId, or solidComponentMeasurementConventionId")
+  }, "a clinical-condition-shaped atomic-clinical-rule (conditions present) must not declare diameterConditions, volumeConditions, measurementConventionId, solidComponentMeasurementConventionId, or operandInapplicabilityPreconditions")
   // ADR-0007: every Approved Rule Revision carries an explicit, recorded approval event (who,
   // when) -- approval is never implied by authorship or by approvalStatus alone. Structurally
   // impossible to parse an Approved revision without one.
@@ -278,7 +320,33 @@ export const ruleRevisionSchema = z
     );
     const hasSolidComponentConvention = rule.solidComponentMeasurementConventionId !== undefined;
     return hasSolidComponentCondition === hasSolidComponentConvention;
-  }, "an atomic-clinical-rule declaring solidComponentMeasurementConventionId must include a diameterConditions entry on field \"solid_component_size_mm\", and vice versa");
+  }, "an atomic-clinical-rule declaring solidComponentMeasurementConventionId must include a diameterConditions entry on field \"solid_component_size_mm\", and vice versa")
+  // issue #26: operandInapplicabilityPreconditions is scoped to this first contract version's
+  // only supported operand-resolution shape -- diameter-basis rules. Not a permanent restriction,
+  // just the smallest declared scope; extend explicitly (and re-review) before ever using it on a
+  // volume-preferred rule.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.operandInapplicabilityPreconditions === undefined) {
+      return true;
+    }
+    return rule.measurementBasis === "diameter";
+  }, "operandInapplicabilityPreconditions is only supported when measurementBasis is \"diameter\"")
+  // issue #26: each precondition's `operand` must correspond to an operand THIS SAME rule
+  // actually declares -- a precondition excusing a missing solidComponent operand is meaningless
+  // (and unenforceable) on a rule that never requires solidComponentMeasurementConventionId in
+  // the first place, and symmetrically for wholeNodule/measurementConventionId. Mirrors the
+  // existing solidComponentMeasurementConventionId <-> diameterConditions bidirectional-binding
+  // precedent immediately above.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.operandInapplicabilityPreconditions === undefined) {
+      return true;
+    }
+    return rule.operandInapplicabilityPreconditions.every((p) =>
+      p.operand === "solidComponent"
+        ? rule.solidComponentMeasurementConventionId !== undefined
+        : rule.measurementConventionId !== undefined,
+    );
+  }, "an operandInapplicabilityPreconditions entry's `operand` must be an operand this same rule actually declares (\"solidComponent\" requires solidComponentMeasurementConventionId; \"wholeNodule\" requires measurementConventionId)");
 
 export const ruleSetReleaseSchema = z.object({
   releaseId: z.string().min(1),

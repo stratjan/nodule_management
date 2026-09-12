@@ -18,6 +18,7 @@ import type {
   DecisionExecutionTrace,
   DiameterMeasurement,
   MeasurementConventionId,
+  MeasurementOperandTarget,
   PathwayGateRevision,
   PathwaySelection,
   RecommendationContent,
@@ -31,10 +32,12 @@ import {
   isNoRoutineFollowUpRecommendation,
   isPersistenceSurveillanceRecommendation,
   isStructuredRecommendation,
+  OPERAND_CONTAINER,
+  OPERAND_SHADOW_FIELD,
 } from "./types";
 
 export const ENGINE_VERSION = "1.4.0";
-export const SCHEMA_VERSION = "1.3.0";
+export const SCHEMA_VERSION = "1.4.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -135,6 +138,38 @@ function insufficientInputForMeasurement(
       ? `no convention-bound ${target} diameter measurements were supplied.`
       : `supplied convention id(s): ${resolution.suppliedIds.join(", ")}.`);
   return { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason };
+}
+
+/**
+ * issue #26: generic, source-agnostic check for whether a rule's own `operandInapplicabilityPreconditions`
+ * excuse a MISSING `operand` measurement. Every concrete threshold, convention id, and rationale
+ * lives in `rule.operandInapplicabilityPreconditions` (governed JSON, ADR-0006) -- this function
+ * contains no Fleischner-specific, Recommendation-4-specific, or any other source-specific
+ * literal. `OPERAND_CONTAINER`/`OPERAND_SHADOW_FIELD` are purely structural facts about the
+ * ClinicalInputState shape itself (issue #18's own two measurement containers), not clinical
+ * policy (ADR-0009). Multiple entries combine as OR -- any one matching entry is sufficient;
+ * within one entry, `whenConditions` combine as AND via the existing, unmodified
+ * evaluateConditions() interpreter. Must only ever be called when the `operand` measurement has
+ * already been found "missing" (never "resolved", never "ambiguous") -- callers enforce this.
+ */
+function operandExcusedByInapplicabilityPrecondition(
+  rule: AtomicClinicalRuleRevision,
+  operand: MeasurementOperandTarget,
+  input: ClinicalInputState,
+): boolean {
+  const preconditions = (rule.operandInapplicabilityPreconditions ?? []).filter(
+    (p) => p.operand === operand,
+  );
+  return preconditions.some((p) => {
+    const resolution = resolveConventionBoundMeasurement(input[OPERAND_CONTAINER[p.whenOperand]], p.whenConventionId);
+    if (resolution.state !== "resolved") return false;
+    const shadowed = {
+      ...input,
+      [OPERAND_SHADOW_FIELD[p.whenOperand]]: resolution.valueMm,
+    } as unknown as ClinicalInputState;
+    const result = evaluateConditions(p.whenConditions, shadowed);
+    return result.allFieldsPresent && result.matched;
+  });
 }
 
 function isPathwayGate(r: RuleSetRelease["revisions"][number]): r is PathwayGateRevision {
@@ -293,6 +328,26 @@ function evaluateSingleAtomicRule(
         input.nodule_diameter_measurements,
         requiredId,
       );
+      // issue #26: symmetric with the solidComponent-operand check below -- no currently-governed
+      // rule declares a "wholeNodule"-targeted precondition (every diameter-basis rule so far
+      // requires its own whole-nodule measurement unconditionally), so this is a no-op for every
+      // existing rule, kept generic for the next rule/source that might need it.
+      if (
+        wholeNoduleResolution.state === "missing" &&
+        operandExcusedByInapplicabilityPrecondition(rule, "wholeNodule", input)
+      ) {
+        return {
+          rule,
+          outcome: {
+            recommendationSourceId: sourceId,
+            state: "OUTSIDE_CURRENT_RULESET_SCOPE",
+            reason:
+              "This rule's required whole-nodule measurement was not supplied, but a governed " +
+              "operandInapplicabilityPreconditions entry on this rule determined the operand is " +
+              "not expected for this Clinical Input State.",
+          },
+        };
+      }
       if (wholeNoduleResolution.state !== "resolved") {
         return {
           rule,
@@ -386,40 +441,30 @@ function evaluateSingleAtomicRule(
         input.solid_component_diameter_measurements,
         requiredSolidComponentId,
       );
-      if (solidComponentResolution.state === "missing") {
-        // issue #26 (implementation finding, not part of the approved spec's enumerated cases):
-        // Candidate C has no independent whole-nodule condition of its own and therefore nothing
-        // to pre-check with, unlike Candidate B's wholeNoduleOnlyConditions short-circuit above.
-        // Without this check, a whole-nodule <6mm input with no solid-component measurement
-        // supplied at all (State A -- the UI never even asks for one below 6mm, and
-        // Recommendation 4 itself states a discrete solid component "cannot be reliably defined"
-        // there) would report INSUFFICIENT_INPUT here and, via evaluateAtomicRulesForSource's
-        // INSUFFICIENT_INPUT precedence, silently mask ACR-FLEISCHNER-PARTSOLID-LT6MM's own valid
-        // RECOMMENDATION for that same input. This reads an existing, independently governed
-        // measurement (the same fleischner-2017-average-diameter convention Rule 1/Candidate B
-        // already require) only to decide how to honestly REPORT missing solid-component data --
-        // it adds no condition to this rule's own diameterConditions, and it does not change
-        // whether or what Candidate C matches for any input where a solid-component measurement
-        // IS supplied (the whole<6mm + solid>8mm combination below still resolves and still
-        // produces the required AmbiguousRuleMatchError against Rule 1, unaffected by this
-        // check, since it only applies when the solid-component operand is missing entirely).
-        const wholeNoduleResolution = resolveConventionBoundMeasurement(
-          input.nodule_diameter_measurements,
-          "fleischner-2017-average-diameter",
-        );
-        if (wholeNoduleResolution.state === "resolved" && wholeNoduleResolution.valueMm < 6) {
-          return {
-            rule,
-            outcome: {
-              recommendationSourceId: sourceId,
-              state: "OUTSIDE_CURRENT_RULESET_SCOPE",
-              reason:
-                "Whole-nodule diameter resolved below 6mm; Recommendation 4 states a discrete " +
-                "solid component cannot be reliably defined for a part-solid nodule this small, " +
-                "so no solid-component measurement is expected and this rule does not apply.",
-            },
-          };
-        }
+      // issue #26 (architecture-review correction): a rule declaring no independent whole-nodule
+      // condition has nothing of its own to pre-check with, unlike Candidate B's
+      // wholeNoduleOnlyConditions short-circuit above. Without some check here, a rule whose
+      // required operand is missing entirely would unconditionally report INSUFFICIENT_INPUT and,
+      // via evaluateAtomicRulesForSource's INSUFFICIENT_INPUT precedence, could silently mask a
+      // different rule's own valid match for the same input. Delegated entirely to the rule's own
+      // governed operandInapplicabilityPreconditions (ADR-0006/ADR-0009) -- this call contains no
+      // source-specific literal of any kind; it does not change whether or what this rule matches
+      // for any input where the operand IS supplied.
+      if (
+        solidComponentResolution.state === "missing" &&
+        operandExcusedByInapplicabilityPrecondition(rule, "solidComponent", input)
+      ) {
+        return {
+          rule,
+          outcome: {
+            recommendationSourceId: sourceId,
+            state: "OUTSIDE_CURRENT_RULESET_SCOPE",
+            reason:
+              "This rule's required solid-component measurement was not supplied, but a governed " +
+              "operandInapplicabilityPreconditions entry on this rule determined the operand is " +
+              "not expected for this Clinical Input State.",
+          },
+        };
       }
       if (solidComponentResolution.state !== "resolved") {
         return {

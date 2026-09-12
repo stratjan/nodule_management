@@ -569,7 +569,7 @@ describe("part-solid pathway (issue #18)", () => {
     });
   });
 
-  it("issue #26: engineVersion reports 1.4.0 -- the evaluate.ts solid-component-only dispatch extension (Candidate C) is a real runtime-semantics change (a previously schema-valid-but-permanently-dead rule shape becomes evaluable), so every trace produced by the current engine, including this unrelated State-A case, must not silently claim the prior 1.3.0 contract; schemaVersion stays 1.3.0 since no schema shape changed", () => {
+  it("issue #26: engineVersion and schemaVersion both report 1.4.0 -- the solid-component-only dispatch extension (Candidate C) is a real runtime-semantics change, and operandInapplicabilityPreconditions (architecture-review correction) is a genuine, additive schema extension, not merely an evaluate.ts-internal change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.3.0 contract for either", () => {
     const input: ClinicalInputState = {
       ...partSolidBasePathway,
       ...baseApplicability,
@@ -578,7 +578,7 @@ describe("part-solid pathway (issue #18)", () => {
     };
     const trace = evaluate(input, release);
     expect(trace.engineVersion).toBe("1.4.0");
-    expect(trace.schemaVersion).toBe("1.3.0");
+    expect(trace.schemaVersion).toBe("1.4.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {
