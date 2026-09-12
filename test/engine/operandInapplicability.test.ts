@@ -1,8 +1,15 @@
-// Generic, source-agnostic proof of OperandInapplicabilityPrecondition (issue #26,
-// architecture-review correction). Synthetic, clearly-non-clinical fixtures only -- proves the
-// mechanism itself (missing-operand exception, OR-across-entries, AND-within-entry, and its
-// strict boundary against "ambiguous"/"resolved" states) without depending on any Fleischner
-// content, per ADR-0009's "correctness owned by this project, generic interpreter" requirement.
+// Synthetic, source-agnostic mechanics test for OperandInapplicabilityPrecondition (issue #26,
+// architecture-review correction). The rule IDs, provenance, gate/applicability logic, and
+// expected outcomes here are entirely synthetic and carry no real clinical content -- this file
+// proves the mechanism itself (missing-operand exception, OR-across-entries, AND-within-entry,
+// and its strict boundary against "ambiguous"/"resolved" states), not any Fleischner-specific
+// fact, per ADR-0009's "correctness owned by this project, generic interpreter" requirement.
+// MeasurementConventionId is a closed vocabulary (types.ts) that currently contains only the two
+// governed Fleischner-named tokens ("fleischner-2017-average-diameter",
+// "fleischner-2017-solid-component-long-axis") -- reused below purely as inert convention tags to
+// satisfy that closed type, exactly as ruleAmbiguity.test.ts's own synthetic fixtures already do.
+// Nothing in evaluate.ts's operand-inapplicability dispatch is keyed to these specific token
+// values; the mechanism is generic regardless of which governed convention id is used.
 import { describe, expect, it } from "vitest";
 import { evaluate, AmbiguousRuleMatchError } from "../../src/engine/evaluate";
 import { buildRuleSetRelease } from "../../src/engine/releaseBuilder";

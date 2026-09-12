@@ -427,14 +427,15 @@ function evaluateSingleAtomicRule(
       };
     }
 
-    // issue #26: a rule may require only the solid-component operand, independent of any
-    // whole-nodule measurement -- Fleischner Recommendation 4's solid-component->8mm escalation
-    // trigger states no whole-nodule threshold of its own. Resolving this operand must not
-    // require a whole-nodule measurementConventionId merely to reach it -- that would impose an
-    // engine-structural input requirement the source itself does not state. This branch is
-    // reachable only when the rule declares no measurementConventionId, so a whole-nodule
-    // measurement present in the Clinical Input State is never read here and cannot affect this
-    // rule's match.
+    // issue #26: a diameter-basis rule may declare solidComponentMeasurementConventionId alone,
+    // with no measurementConventionId at all -- schema.ts permits this shape independently of any
+    // rule's own clinical content. The solid-component operand is then resolved on its own,
+    // without requiring a whole-nodule measurement merely to reach it; this branch is reachable
+    // only when the rule declares no measurementConventionId, so a whole-nodule measurement
+    // present in the Clinical Input State is never read here and cannot affect this rule's match.
+    // Generic engine plumbing for this schema-valid rule shape -- carries no rule-specific
+    // clinical content of its own; every threshold/condition still comes only from
+    // rule.diameterConditions, governed JSON.
     if (rule.solidComponentMeasurementConventionId !== undefined) {
       const requiredSolidComponentId = rule.solidComponentMeasurementConventionId;
       const solidComponentResolution = resolveConventionBoundMeasurement(
