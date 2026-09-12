@@ -93,6 +93,70 @@ export interface DiameterMeasurement {
   conventionId: MeasurementConventionId;
 }
 
+/** issue #26: the two measurement operands an Atomic Clinical Rule can independently declare --
+ * already the implicit shape of MeasurementsUsed (evaluate.ts), named explicitly so
+ * OperandInapplicabilityPrecondition can reference either one generically. Purely structural:
+ * naming an operand here carries no source-specific meaning by itself. */
+export type MeasurementOperandTarget = "wholeNodule" | "solidComponent";
+
+/** issue #26: the fixed, structural mapping from a MeasurementOperandTarget to the synthetic
+ * shadow field its resolved value is written under (evaluate.ts's own shadowing convention,
+ * issue #18). This is a fact about the ClinicalInputState/evaluate.ts shape itself -- not a
+ * clinical/source-specific fact -- so it is the one thing schema.ts's OperandInapplicability-
+ * Precondition field-restriction refine and evaluate.ts's precondition resolver are both allowed
+ * to hard-code; every concrete threshold, convention id, and rationale still lives only in
+ * governed rule JSON, never here. Single source of truth, imported by both engine/schema.ts and
+ * engine/evaluate.ts rather than duplicated. */
+export const OPERAND_SHADOW_FIELD: Record<MeasurementOperandTarget, "nodule_size_mm" | "solid_component_size_mm"> = {
+  wholeNodule: "nodule_size_mm",
+  solidComponent: "solid_component_size_mm",
+};
+
+/** issue #26: the fixed, structural mapping from a MeasurementOperandTarget to the
+ * ClinicalInputState array field its convention-bound measurements are supplied in (issue #18/
+ * #20's DiameterMeasurement[] containers). Same non-clinical, structural status as
+ * OPERAND_SHADOW_FIELD above. */
+export const OPERAND_CONTAINER: Record<
+  MeasurementOperandTarget,
+  "nodule_diameter_measurements" | "solid_component_diameter_measurements"
+> = {
+  wholeNodule: "nodule_diameter_measurements",
+  solidComponent: "solid_component_diameter_measurements",
+};
+
+/**
+ * issue #26: a governed, source-cited fact that a rule's own required measurement operand is not
+ * merely missing but source-defined as not applicable/not expected, when a DIFFERENT operand's
+ * convention-bound measurement satisfies a stated condition. Every concrete threshold, convention
+ * id, and clinical rationale lives in this data -- evaluate.ts contains none of it (ADR-0006/
+ * ADR-0009). Consulted only when the `operand` measurement is genuinely missing (never when it is
+ * present, and never when it is merely ambiguous/duplicated) -- it excuses an absent operand, it
+ * never participates in this rule's own match/no-match determination (diameterConditions is
+ * unaffected by this mechanism, always). If a rule declares more than one entry, they combine as
+ * OR (any one matching entry excuses the missing operand); a single entry's own `whenConditions`
+ * combine as AND, exactly like every other Condition[] array in this schema (ADR-0009 -- no new
+ * boolean/rules language, the existing evaluateConditions() AND-only interpreter is reused
+ * unchanged).
+ */
+export interface OperandInapplicabilityPrecondition {
+  /** Which of THIS rule's own declared operands a missing measurement is excused for. */
+  operand: MeasurementOperandTarget;
+  /** Which OTHER operand's convention-bound measurement this precondition checks. Must differ
+   * from `operand` -- a precondition can never reference the same operand it excuses. */
+  whenOperand: MeasurementOperandTarget;
+  /** The already-governed convention the `whenOperand` measurement must resolve under. */
+  whenConventionId: MeasurementConventionId;
+  /** Conditions on the resolved `whenOperand` value that, if all matched (AND, same as every
+   * other Condition[] in this schema), excuse the missing `operand` measurement. Every condition
+   * must reference exactly the synthetic shadow field `whenOperand` resolves to
+   * ("nodule_size_mm" for "wholeNodule", "solid_component_size_mm" for "solidComponent") --
+   * enforced by schema.ts, not by this type. */
+  whenConditions: Condition[];
+  /** Source citation for why this operand becomes inapplicable under whenConditions -- the only
+   * place source-specific (e.g. Recommendation-4-specific) language may appear. */
+  provenance: Provenance;
+}
+
 /** issue #20: exactly two forms -- a stated, non-empty interval list, or an explicit marker that
  * the source states no timing. Never a third form, never an empty/omitted value standing in for
  * "not specified". */
@@ -234,6 +298,11 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * the value up in ClinicalInputState.solid_component_diameter_measurements independently of the
    * whole-nodule lookup. */
   solidComponentMeasurementConventionId?: MeasurementConventionId;
+  /** issue #26: governed, source-cited exceptions to "a missing required operand is
+   * INSUFFICIENT_INPUT" -- see OperandInapplicabilityPrecondition's own doc comment. Optional;
+   * only measurement-shaped rules with an operand that can become source-defined-as-inapplicable
+   * declare it. Multiple entries combine as OR (schema.ts enforces the rest). */
+  operandInapplicabilityPreconditions?: OperandInapplicabilityPrecondition[];
   /** issue #15 Candidate A0: the evaluation-condition array for a clinical-condition-shaped rule
    * -- a rule whose match condition is a clinician-attested fact, not a physical nodule
    * measurement (e.g. `s3_volume_stability_criterion_met`). Mutually exclusive with

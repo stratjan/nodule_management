@@ -2,12 +2,13 @@
 // against already-approved rule and Source Applicability Rule definitions, not new clinical
 // judgments. Do not add scenarios beyond this list without human clinical review.
 import { describe, expect, it } from "vitest";
-import { evaluate } from "../../src/engine/evaluate";
+import { evaluate, AmbiguousRuleMatchError } from "../../src/engine/evaluate";
 import { loadTestRelease } from "../helpers/loadTestRelease";
 import type { ClinicalInputState } from "../../src/engine/types";
 import {
   isNoRoutineFollowUpRecommendation,
   isPersistenceSurveillanceRecommendation,
+  isStructuredRecommendation,
 } from "../../src/engine/types";
 
 const release = loadTestRelease();
@@ -568,7 +569,7 @@ describe("part-solid pathway (issue #18)", () => {
     });
   });
 
-  it("issue #15 Candidate A0: engineVersion/schemaVersion report 1.3.0 -- this additive evolution (new ClinicalPathwayId, clinical-condition-shaped Atomic Rule, optional measurementBasis, new conditions field, new ClinicalInputState field, new recommendation trace/audit field) must not silently claim the prior 1.2.0 contract", () => {
+  it("issue #26: engineVersion and schemaVersion both report 1.4.0 -- the solid-component-only dispatch extension (Candidate C) is a real runtime-semantics change, and operandInapplicabilityPreconditions (architecture-review correction) is a genuine, additive schema extension, not merely an evaluate.ts-internal change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.3.0 contract for either", () => {
     const input: ClinicalInputState = {
       ...partSolidBasePathway,
       ...baseApplicability,
@@ -576,8 +577,8 @@ describe("part-solid pathway (issue #18)", () => {
       nodule_diameter_measurements: fleischnerMeasurement(5),
     };
     const trace = evaluate(input, release);
-    expect(trace.engineVersion).toBe("1.3.0");
-    expect(trace.schemaVersion).toBe("1.3.0");
+    expect(trace.engineVersion).toBe("1.4.0");
+    expect(trace.schemaVersion).toBe("1.4.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {
@@ -747,6 +748,132 @@ describe("part-solid pathway (issue #18)", () => {
     );
     expect(outcomeFor(evaluate(atBoundary, release), "fleischner")?.recommendation?.matchedRuleId).toBe(
       "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
+    );
+  });
+});
+
+describe("part-solid State D -- solid component >8mm (issue #26, Candidate C)", () => {
+  it("whole 10mm + solid 9mm: RECOMMENDATION via the solid-component->8mm rule, coequal PET/CT/biopsy/resection actions", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+      solid_component_diameter_measurements: solidComponentMeasurement(9),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("RECOMMENDATION");
+    expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM");
+    const recommendation = fleischner?.recommendation;
+    expect(recommendation && isStructuredRecommendation(recommendation)).toBe(true);
+    expect((recommendation as any).actions).toEqual([
+      { label: "PET/CT", timing: { kind: "not-specified-by-source" } },
+      { label: "Biopsy/tissue sampling", timing: { kind: "not-specified-by-source" } },
+      { label: "Resection", timing: { kind: "not-specified-by-source" } },
+    ]);
+    expect(recommendation?.measurementsUsed).toEqual({
+      solidComponent: { valueMm: 9, conventionId: "fleischner-2017-solid-component-long-axis" },
+    });
+  });
+
+  it("solid component exactly 8mm: OUTSIDE_CURRENT_RULESET_SCOPE, strict >8mm boundary not met (whole-nodule value present and unrelated)", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+      solid_component_diameter_measurements: solidComponentMeasurement(8),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+    expect(fleischner?.recommendation).toBeUndefined();
+  });
+
+  it("missing solid-component measurement entirely, whole-nodule present: INSUFFICIENT_INPUT naming the solid-component convention", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 10,
+      nodule_diameter_measurements: fleischnerMeasurement(10),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.reason).toContain("fleischner-2017-solid-component-long-axis");
+    expect(fleischner?.reason).toContain("solid-component");
+  });
+
+  it("corrected golden case (was previously mis-specified as RECOMMENDATION): whole-nodule measurement missing entirely, solid component 9mm supplied -- overall Fleischner outcome is INSUFFICIENT_INPUT, not a Candidate-C recommendation. ACR-FLEISCHNER-PARTSOLID-LT6MM cannot determine its own match/no-match status without a whole-nodule measurement, and evaluateAtomicRulesForSource gives any rule-level INSUFFICIENT_INPUT precedence over another rule's own match -- Candidate C's independent, successful resolution does not override this existing, already-Approved precedence rule", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      solid_component_diameter_measurements: solidComponentMeasurement(9),
+    };
+    const trace = evaluate(input, release);
+    const fleischner = outcomeFor(trace, "fleischner");
+    expect(fleischner?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner?.recommendation).toBeUndefined();
+  });
+
+  it("whole-nodule value, once present and >=6mm, does not affect Candidate C's match or its content -- 6mm, 10mm, and 30mm all produce the identical recommendation for the same 9mm solid component", () => {
+    const wholeValues = [6, 10, 30];
+    const recommendations = wholeValues.map((whole) => {
+      const input: ClinicalInputState = {
+        ...partSolidBasePathway,
+        ...baseApplicability,
+        nodule_size_mm: whole,
+        nodule_diameter_measurements: fleischnerMeasurement(whole),
+        solid_component_diameter_measurements: solidComponentMeasurement(9),
+      };
+      return outcomeFor(evaluate(input, release), "fleischner");
+    });
+    for (const fleischner of recommendations) {
+      expect(fleischner?.state).toBe("RECOMMENDATION");
+      expect(fleischner?.recommendation?.matchedRuleId).toBe("ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM");
+    }
+    expect(recommendations[0]?.recommendation).toEqual(recommendations[1]?.recommendation);
+    expect(recommendations[1]?.recommendation).toEqual(recommendations[2]?.recommendation);
+  });
+
+  it("real State-A x State-D ambiguity (issue #26 re-opened grilling, resolved as a source-incompatible/not-reliably-definable cross-state input, not resolved by rule ordering): whole-nodule <6mm + solid component >8mm, both convention-affirmed, throws AmbiguousRuleMatchError naming both ACR-FLEISCHNER-PARTSOLID-LT6MM and ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM -- intentional, fail-closed, never resolved by giving either rule precedence", () => {
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 5,
+      nodule_diameter_measurements: fleischnerMeasurement(5),
+      solid_component_diameter_measurements: solidComponentMeasurement(9),
+    };
+    let caught: unknown;
+    try {
+      evaluate(input, release);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(AmbiguousRuleMatchError);
+    const matchedRuleIds = (caught as AmbiguousRuleMatchError).matchedRules.map((r) => r.ruleId).sort();
+    expect(matchedRuleIds).toEqual(
+      ["ACR-FLEISCHNER-PARTSOLID-LT6MM", "ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM"].sort(),
+    );
+  });
+
+  it("Rule 1 (whole <6mm) and Candidate C (solid >8mm) are NOT mutually exclusive by field construction -- unlike every other rule pair on this pathway, they condition on different fields, so release-time overlap validation is blind to this pair by design, not merely by omission; only the runtime guard above catches it", () => {
+    // This test intentionally documents the negative: no release-time check is exercised here.
+    // See release-assembly.test.ts / rangeOverlap.test.ts for confirmation that the real combined
+    // Release still builds successfully despite this pair -- assertNoOverlappingAtomicRules never
+    // claims to prove non-overlap across different fields, for any rule pair, and does not throw
+    // for this one either.
+    const input: ClinicalInputState = {
+      ...partSolidBasePathway,
+      ...baseApplicability,
+      nodule_size_mm: 20,
+      nodule_diameter_measurements: fleischnerMeasurement(20),
+      solid_component_diameter_measurements: solidComponentMeasurement(9),
+    };
+    expect(() => evaluate(input, release)).not.toThrow();
+    expect(outcomeFor(evaluate(input, release), "fleischner")?.recommendation?.matchedRuleId).toBe(
+      "ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM",
     );
   });
 });

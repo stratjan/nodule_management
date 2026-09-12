@@ -32,11 +32,11 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 14 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15's solid follow-up pathway), nothing else, no BTS content", () => {
+  it("includes exactly the 15 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15's solid follow-up pathway + issue #26's part-solid solid-component >8mm rule), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(14);
+    expect(release.revisions).toHaveLength(15);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -52,6 +52,7 @@ describe("Rule-Set Release assembly", () => {
       "ACR-FLEISCHNER-GT8TO30MM",
       "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
       "ACR-FLEISCHNER-PARTSOLID-LT6MM",
+      "ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM",
       "ACR-S3-5TO8MM",
       "ACR-S3-FOLLOWUP-VOLUME-STABLE",
       "GR-1",
@@ -92,10 +93,10 @@ describe("Rule-Set Release assembly", () => {
     expect(() => buildRuleSetRelease(revisions)).toThrow(OverlappingRuleConditionsError);
   });
 
-  it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, pure-GGN, part-solid, and follow-up rules across pathways)", () => {
+  it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, pure-GGN, part-solid, part-solid solid-component >8mm, and follow-up rules across pathways -- including the Rule-1/Candidate-C pair that release-time overlap validation is blind to by field construction, per issue #26)", () => {
     const revisions = loadApprovedPhase1Revisions();
     expect(() => buildRuleSetRelease(revisions)).not.toThrow();
-    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(14);
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(15);
   });
 
   it("issue #15: ACR-S3-FOLLOWUP-VOLUME-STABLE's non-numeric conditions never trigger the overlap guard -- extractNumericRange returns null for a non-numeric value, so this rule can never be reported as overlapping with anything (S3 has only one Atomic Clinical Rule per pathway anyway)", () => {
