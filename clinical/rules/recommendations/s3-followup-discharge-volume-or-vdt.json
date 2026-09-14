@@ -1,0 +1,47 @@
+{
+  "ruleId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
+  "revisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "s3",
+  "clinicalPathwayId": "incidental-solitary-solid-follow-up",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-14" },
+  "provenanceAnchors": [
+    {
+      "role": "criterion-volume-stability",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, volume-based discharge-criterion sentence (first of three OR-combined discharge conditions; the third -- general-condition status -- remains explicitly excluded from this slice)"
+      }
+    },
+    {
+      "role": "criterion-vdt-over-600",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, VDT-based discharge-criterion sentence (VDT >600 days; second of three OR-combined discharge conditions). Local SOP Tabelle 4's separate >600-day band additionally conditions its own action on stable radiological findings over 2 years -- a durational precondition the S3-Narrativ discharge sentence itself does not state; this table-vs-narrative conflict is recorded as an open Source Quality Finding, deliberately not imported into this rule."
+      }
+    }
+  ],
+  "sufficientConditionGroups": [
+    {
+      "groupId": "volume-stability",
+      "conditions": [{ "field": "s3_volume_stability_criterion_met", "op": "eq", "value": true }],
+      "provenanceRole": "criterion-volume-stability"
+    },
+    {
+      "groupId": "vdt-over-600",
+      "conditions": [{ "field": "s3_vdt_days", "op": "gt", "value": 600 }],
+      "provenanceRole": "criterion-vdt-over-600"
+    }
+  ],
+  "recommendation": {
+    "noRoutineFollowUp": true,
+    "rationale": "S3 states that a solitary, solid, incidental pulmonary nodule under CT surveillance may be discharged from further routine follow-up once EITHER its volume increase over approximately one year is below the source's stated 25% threshold, OR its volume-doubling time exceeds 600 days -- two independently sufficient discharge criteria from the same source sentence, in a patient >=18 years old with no known malignancy history and not immunocompromised. A third S3-stated discharge condition (general-condition status precluding further work-up) remains outside this slice. The app does not calculate volume change, elapsed time, or VDT itself -- both are explicit clinician attestations/entries. A Local-SOP table elsewhere additionally conditions a >600-day VDT finding on 2-year radiological stability; that precondition is not part of the S3 narrative's own discharge sentence and is not applied here. Neither criterion being met does not, by itself, imply growth or trigger any work-up recommendation in this Rule-Set Release."
+  }
+}

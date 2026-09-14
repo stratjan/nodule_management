@@ -5,9 +5,9 @@ import { activeRelease } from "../data/activeRelease";
 import { activeManifest } from "../data/activeManifest";
 import { pathwayFields, measurementFields, applicabilityFields, followUpFields } from "../workflow/fields";
 import {
+  applyGr4FollowUpReset,
   canContinuePastPathwayStep,
   isNoduleCountOutOfScope,
-  shouldClearS3FollowUpCriterion,
 } from "../workflow/pathwayNavigation";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
@@ -49,10 +49,7 @@ export function App() {
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => {
       const next: ClinicalInputState = { ...prev, [id]: value };
-      if (shouldClearS3FollowUpCriterion(id, value)) {
-        delete next.s3_volume_stability_criterion_met;
-      }
-      return next;
+      return applyGr4FollowUpReset(next, id, value);
     });
     // issue #20 review: the affirmation is only ever valid for the diameter value it was given
     // for -- any edit to that value (including clearing it) invalidates a prior affirmation, so
@@ -284,10 +281,11 @@ export function App() {
           {showFollowUpCriterionInput && (
             <>
               <p>
-                Confirm whether the S3 volume-stability criterion is met for this follow-up
-                assessment. This records the clinician&apos;s own assessment against the S3
-                criterion (volume increase &lt;25% over approximately one year) &mdash; the app
-                does not calculate volume change or elapsed time from prior/current measurements.
+                S3 discharges a followed nodule from routine follow-up when either of two
+                independently sufficient criteria is met: volume increase &lt;25% over
+                approximately one year, or a volume-doubling time (VDT) over 600 days. Confirm the
+                volume-stability criterion and/or enter a clinician-determined VDT in days &mdash;
+                the app does not calculate volume change, elapsed time, or VDT itself.
               </p>
               <div className="field-grid">
                 {followUpFields.map((field) => (

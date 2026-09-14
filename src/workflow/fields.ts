@@ -10,7 +10,7 @@ export interface SelectFieldDef {
 }
 
 export interface NumberFieldDef {
-  id: "nodule_count" | "nodule_size_mm" | "nodule_volume_mm3" | "age";
+  id: "nodule_count" | "nodule_size_mm" | "nodule_volume_mm3" | "age" | "s3_vdt_days";
   label: string;
   type: "number";
   step?: string;
@@ -73,14 +73,21 @@ export const applicabilityFields: FieldDef[] = [
   { id: "immunocompromised", label: "Immunocompromised", type: "boolean" },
 ];
 
-/** Step 2, solid-follow-up pathway only (issue #15 Candidate A0): the S3 clinician-attested
- * volume-stability criterion. Rendered only when the pathway-shaped input is solid/incidental/
- * follow-up/solitary (App.tsx) -- optional here like every other Step-2 field; an unanswered
- * value is itself a valid, intended INSUFFICIENT_INPUT outcome, not a blocked evaluation. */
+/** Step 2, solid-follow-up pathway only (issue #15 Candidate A0/B1): the two independently
+ * sufficient S3 discharge criteria. Rendered only when the pathway-shaped input is solid/
+ * incidental/follow-up/solitary (App.tsx) -- optional here like every other Step-2 field; an
+ * unanswered value is itself a valid, intended INSUFFICIENT_INPUT outcome, not a blocked
+ * evaluation. */
 export const followUpFields: FieldDef[] = [
   {
     id: "s3_volume_stability_criterion_met",
     label: "S3 criterion confirmed: volume increase <25% over approximately one year",
     type: "boolean",
+  },
+  {
+    id: "s3_vdt_days",
+    label: "S3 criterion: volume-doubling time (VDT), in days (clinician-entered; not calculated)",
+    type: "number",
+    min: 0,
   },
 ];

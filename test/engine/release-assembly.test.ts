@@ -32,7 +32,7 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 15 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15's solid follow-up pathway + issue #26's part-solid solid-component >8mm rule), nothing else, no BTS content", () => {
+  it("includes exactly the 15 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor) + issue #26's part-solid solid-component >8mm rule), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
@@ -54,7 +54,7 @@ describe("Rule-Set Release assembly", () => {
       "ACR-FLEISCHNER-PARTSOLID-LT6MM",
       "ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM",
       "ACR-S3-5TO8MM",
-      "ACR-S3-FOLLOWUP-VOLUME-STABLE",
+      "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
       "GR-1",
       "GR-2",
       "GR-3",
@@ -99,13 +99,15 @@ describe("Rule-Set Release assembly", () => {
     expect(buildRuleSetRelease(revisions).revisions).toHaveLength(15);
   });
 
-  it("issue #15: ACR-S3-FOLLOWUP-VOLUME-STABLE's non-numeric conditions never trigger the overlap guard -- extractNumericRange returns null for a non-numeric value, so this rule can never be reported as overlapping with anything (S3 has only one Atomic Clinical Rule per pathway anyway)", () => {
+  it("issue #15/#28: ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT's sufficientConditionGroups conditions never trigger the overlap guard -- extractNumericRange/rangesOverlap only ever inspect diameterConditions/volumeConditions, both undefined on this rule, so it can never be reported as overlapping with anything (S3 has only one Atomic Clinical Rule per pathway anyway)", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
     const s3RuleIds = release.revisions
       .filter((r) => r.kind === "atomic-clinical-rule" && r.recommendationSourceId === "s3")
       .map((r) => r.ruleId);
-    expect(s3RuleIds).toEqual(expect.arrayContaining(["ACR-S3-5TO8MM", "ACR-S3-FOLLOWUP-VOLUME-STABLE"]));
+    expect(s3RuleIds).toEqual(
+      expect.arrayContaining(["ACR-S3-5TO8MM", "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT"]),
+    );
   });
 
   it("issue #18: the mixed-field diameterConditions on ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM does not cause a false-positive overlap against ACR-FLEISCHNER-PARTSOLID-LT6MM (extractNumericRange returns null for a mixed-field array, so this pair is release-time-undecidable -- an accepted residual, not a defect; see the runtime-never-ambiguous regression in boundary.test.ts)", () => {

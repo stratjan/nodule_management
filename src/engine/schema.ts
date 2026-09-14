@@ -195,6 +195,20 @@ const operandInapplicabilityPreconditionSchema = z
     "whenConditions may only reference the synthetic shadow field whenOperand resolves to (nodule_size_mm for wholeNodule, solid_component_size_mm for solidComponent)",
   );
 
+// issue #28/#15 Candidate B1: one AND-conjoined, independently sufficient alternative inside a
+// sufficientConditionGroups-shaped atomic-clinical-rule. `conditions` uses the exact same fixed
+// conditionSchema as every other rule kind (ADR-0009); `groupId` is a stable author-assigned
+// identifier (uniqueness enforced by the cross-field refine below, never derived from position or
+// content); `provenanceRole` must cross-reference exactly one provenanceAnchors[].role on the same
+// rule (also enforced below).
+const sufficientConditionGroupSchema = z
+  .object({
+    groupId: z.string().min(1),
+    conditions: z.array(conditionSchema).min(1),
+    provenanceRole: z.string().min(1),
+  })
+  .strict();
+
 export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   kind: z.literal("atomic-clinical-rule"),
   recommendationSourceId: z.string().min(1),
@@ -226,6 +240,12 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   // measurementConventionId/solidComponentMeasurementConventionId, enforced by the cross-field
   // refines below. Uses the same fixed conditionSchema as every other rule kind (ADR-0009).
   conditions: z.array(conditionSchema).optional(),
+  // issue #28/#15 Candidate B1: the third, mutually exclusive evaluation shape -- a bounded,
+  // single-level OR-of-AND. `.min(2)` rejects a pointless single-group array (indistinguishable
+  // from bare `conditions`) directly at the array level; the cross-field refines below enforce
+  // groupId uniqueness, the provenanceAnchors requirement/cross-reference, and mutual exclusivity
+  // with every measurement-only field and with `conditions`.
+  sufficientConditionGroups: z.array(sufficientConditionGroupSchema).min(2).optional(),
   recommendation: recommendationContentSchema,
   // issue #20: exactly one of provenance (single, legacy) / provenanceAnchors (multi-anchor) --
   // both optional here, enforced exactly-one-present by the cross-field refine below, following
@@ -248,6 +268,7 @@ export const ruleRevisionSchema = z
     (rule) =>
       rule.kind !== "atomic-clinical-rule" ||
       rule.conditions !== undefined ||
+      rule.sufficientConditionGroups !== undefined ||
       (rule.diameterConditions?.length ?? 0) > 0,
     "a measurement-shaped atomic-clinical-rule must define diameterConditions",
   )
@@ -258,16 +279,18 @@ export const ruleRevisionSchema = z
       (rule.volumeConditions?.length ?? 0) > 0,
     "volume-preferred atomic-clinical-rule must define volumeConditions",
   )
-  // issue #15 Candidate A0: an atomic-clinical-rule uses exactly one evaluation shape --
-  // measurement-shaped (measurementBasis present) XOR clinical-condition-shaped (conditions
-  // present), never both, never neither. This is the shape-selection guard; the two refines below
-  // it enforce the rest of each shape's own internal requirements.
+  // issue #28/#15 Candidate B1: an atomic-clinical-rule uses exactly one of three evaluation
+  // shapes -- measurement-shaped (measurementBasis present) XOR clinical-condition-shaped
+  // (conditions present) XOR sufficientConditionGroups-shaped, never more than one, never none.
+  // This is the shape-selection guard; the refines below it enforce the rest of each shape's own
+  // internal requirements.
   .refine((rule) => {
     if (rule.kind !== "atomic-clinical-rule") return true;
     const isMeasurementShaped = rule.measurementBasis !== undefined;
     const isConditionShaped = rule.conditions !== undefined;
-    return isMeasurementShaped !== isConditionShaped;
-  }, "an atomic-clinical-rule must be either measurement-shaped (measurementBasis) or clinical-condition-shaped (conditions), never both, never neither")
+    const isGroupShaped = rule.sufficientConditionGroups !== undefined;
+    return [isMeasurementShaped, isConditionShaped, isGroupShaped].filter(Boolean).length === 1;
+  }, "an atomic-clinical-rule must be exactly one of measurement-shaped (measurementBasis), clinical-condition-shaped (conditions), or sufficientConditionGroups-shaped, never more than one, never none")
   // issue #15 Candidate A0: a clinical-condition-shaped rule's own conditions array must be
   // non-empty -- mirrors the measurement-shaped diameterConditions-non-empty requirement above.
   .refine((rule) => {
@@ -346,7 +369,62 @@ export const ruleRevisionSchema = z
         ? rule.solidComponentMeasurementConventionId !== undefined
         : rule.measurementConventionId !== undefined,
     );
-  }, "an operandInapplicabilityPreconditions entry's `operand` must be an operand this same rule actually declares (\"solidComponent\" requires solidComponentMeasurementConventionId; \"wholeNodule\" requires measurementConventionId)");
+  }, "an operandInapplicabilityPreconditions entry's `operand` must be an operand this same rule actually declares (\"solidComponent\" requires solidComponentMeasurementConventionId; \"wholeNodule\" requires measurementConventionId)")
+  // issue #28/#15 Candidate B1: a sufficientConditionGroups-shaped rule must not also declare
+  // `conditions` or any measurement-only field -- it is its own, third, mutually exclusive shape,
+  // mirroring the existing conditions-shaped rule's own analogous refine above.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.sufficientConditionGroups === undefined) {
+      return true;
+    }
+    return (
+      rule.conditions === undefined &&
+      rule.measurementBasis === undefined &&
+      rule.diameterConditions === undefined &&
+      rule.volumeConditions === undefined &&
+      rule.measurementConventionId === undefined &&
+      rule.solidComponentMeasurementConventionId === undefined &&
+      rule.operandInapplicabilityPreconditions === undefined
+    );
+  }, "a sufficientConditionGroups-shaped atomic-clinical-rule must not also declare conditions, measurementBasis, diameterConditions, volumeConditions, measurementConventionId, solidComponentMeasurementConventionId, or operandInapplicabilityPreconditions")
+  // issue #28/#15 Candidate B1: groupId values must be unique within one rule -- they are the
+  // stable identifiers reported back in matchedSufficientConditionGroupIds, never a priority key.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.sufficientConditionGroups === undefined) {
+      return true;
+    }
+    const ids = rule.sufficientConditionGroups.map((g) => g.groupId);
+    return new Set(ids).size === ids.length;
+  }, "sufficientConditionGroups entries must have unique groupId values within one rule")
+  // issue #28/#15 Candidate B1: a grouped rule must use the multi-anchor provenanceAnchors form,
+  // never singular provenance -- each group needs its own citation to cross-reference by role,
+  // which a single Provenance object cannot represent.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.sufficientConditionGroups === undefined) {
+      return true;
+    }
+    return rule.provenanceAnchors !== undefined && rule.provenance === undefined;
+  }, "a sufficientConditionGroups-shaped atomic-clinical-rule must declare provenanceAnchors, not singular provenance")
+  // issue #28/#15 Candidate B1: every group's provenanceRole must resolve to an anchor actually
+  // declared on this same rule -- existence check; uniqueness of the anchor roles themselves is
+  // enforced by the next refine.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.sufficientConditionGroups === undefined) {
+      return true;
+    }
+    const anchorRoles = new Set((rule.provenanceAnchors ?? []).map((a) => a.role));
+    return rule.sufficientConditionGroups.every((g) => anchorRoles.has(g.provenanceRole));
+  }, "every sufficientConditionGroups entry's provenanceRole must match exactly one provenanceAnchors[].role on the same rule")
+  // issue #28/#15 Candidate B1: anchor role uniqueness is required only on a rule that declares
+  // sufficientConditionGroups (its roles are cross-reference keys here) -- deliberately not
+  // imposed retroactively on historical non-grouped rules, which never needed this guarantee.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.sufficientConditionGroups === undefined) {
+      return true;
+    }
+    const roles = (rule.provenanceAnchors ?? []).map((a) => a.role);
+    return new Set(roles).size === roles.length;
+  }, "provenanceAnchors[].role values must be unique on a sufficientConditionGroups-shaped atomic-clinical-rule");
 
 export const ruleSetReleaseSchema = z.object({
   releaseId: z.string().min(1),

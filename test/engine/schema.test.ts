@@ -30,6 +30,7 @@ const RULE_FILES = [
   "clinical/rules/recommendations/fleischner-partsolid-solidgt8mm.json",
   "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json",
   "clinical/rules/recommendations/s3-followup-volume-stable.json",
+  "clinical/rules/recommendations/s3-followup-discharge-volume-or-vdt.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -615,5 +616,119 @@ describe("assembled Release / Manifest / Active pointer", () => {
     );
     const pointer = activeRuleSetPointerSchema.parse(pointerRaw);
     expect(rebuilt.releaseId).toBe(pointer.activeReleaseId);
+  });
+});
+
+// issue #28/#15 Candidate B1: focused negative test per refine -- no test covers more than one
+// refine's failure mode, per the required schema-test matrix. One fully valid grouped-rule parse
+// test plus the historical-shape regression close out the matrix.
+describe("issue #28/#15 Candidate B1: sufficientConditionGroups schema constraints", () => {
+  const B1_PATH = "clinical/rules/recommendations/s3-followup-discharge-volume-or-vdt.json";
+
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  it("1. the actual Candidate B1 governed JSON parses successfully (fully valid grouped-rule parse test)", () => {
+    const raw = loadRaw(B1_PATH);
+    expect(raw.sufficientConditionGroups.length).toBe(2);
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("2. rejects a rule declaring both conditions and sufficientConditionGroups", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.conditions = [{ field: "s3_volume_stability_criterion_met", op: "eq", value: true }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("3. rejects sufficientConditionGroups with exactly one group", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.sufficientConditionGroups = [raw.sufficientConditionGroups[0]];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("4. rejects a group with empty conditions", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.sufficientConditionGroups[0].conditions = [];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("5. rejects duplicate groupId values within one rule", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.sufficientConditionGroups[1].groupId = raw.sufficientConditionGroups[0].groupId;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("6. rejects a grouped rule declaring singular provenance instead of provenanceAnchors", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.provenance = raw.provenanceAnchors[0].provenance;
+    delete raw.provenanceAnchors;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("7. rejects a group provenanceRole with no matching provenanceAnchors[].role", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.sufficientConditionGroups[0].provenanceRole = "no-such-role";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("8. rejects duplicate provenanceAnchors[].role values on a grouped rule", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.provenanceAnchors[1].role = raw.provenanceAnchors[0].role;
+    // keep every group's provenanceRole resolvable (existence check, refine #7) so this test
+    // isolates only the uniqueness refine (#8), not a combination of the two.
+    raw.sufficientConditionGroups[1].provenanceRole = raw.provenanceAnchors[0].role;
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9a. rejects a grouped rule also declaring measurementBasis", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.measurementBasis = "diameter";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9b. rejects a grouped rule also declaring diameterConditions", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.diameterConditions = [{ field: "nodule_size_mm", op: "gte", value: 6 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9c. rejects a grouped rule also declaring volumeConditions", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.volumeConditions = [{ field: "nodule_volume_mm3", op: "gte", value: 80 }];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9d. rejects a grouped rule also declaring measurementConventionId", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.measurementConventionId = "fleischner-2017-average-diameter";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9e. rejects a grouped rule also declaring solidComponentMeasurementConventionId", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.solidComponentMeasurementConventionId = "fleischner-2017-solid-component-long-axis";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9f. rejects a grouped rule also declaring operandInapplicabilityPreconditions", () => {
+    const raw = loadRaw(B1_PATH);
+    raw.operandInapplicabilityPreconditions = [
+      {
+        operand: "solidComponent",
+        whenOperand: "wholeNodule",
+        whenConventionId: "fleischner-2017-average-diameter",
+        whenConditions: [{ field: "nodule_size_mm", op: "lt", value: 6 }],
+        provenance: raw.provenanceAnchors[0].provenance,
+      },
+    ];
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("historical shapes still parse unchanged: the unmodified A0 fixture and every other currently-Approved rule file", () => {
+    expect(() => ruleRevisionSchema.parse(loadRaw("clinical/rules/recommendations/s3-followup-volume-stable.json"))).not.toThrow();
+    for (const relativePath of RULE_FILES) {
+      expect(() => ruleRevisionSchema.parse(loadRaw(relativePath))).not.toThrow();
+    }
   });
 });

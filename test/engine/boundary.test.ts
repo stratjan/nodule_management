@@ -569,7 +569,7 @@ describe("part-solid pathway (issue #18)", () => {
     });
   });
 
-  it("issue #26: engineVersion and schemaVersion both report 1.4.0 -- the solid-component-only dispatch extension (Candidate C) is a real runtime-semantics change, and operandInapplicabilityPreconditions (architecture-review correction) is a genuine, additive schema extension, not merely an evaluate.ts-internal change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.3.0 contract for either", () => {
+  it("issue #28/#15 Candidate B1: engineVersion and schemaVersion both report 1.5.0 -- sufficientConditionGroups is a genuine, additive schema extension and a real runtime-reduction-semantics change, not merely an evaluate.ts-internal change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.4.0 contract for either", () => {
     const input: ClinicalInputState = {
       ...partSolidBasePathway,
       ...baseApplicability,
@@ -577,8 +577,8 @@ describe("part-solid pathway (issue #18)", () => {
       nodule_diameter_measurements: fleischnerMeasurement(5),
     };
     const trace = evaluate(input, release);
-    expect(trace.engineVersion).toBe("1.4.0");
-    expect(trace.schemaVersion).toBe("1.4.0");
+    expect(trace.engineVersion).toBe("1.5.0");
+    expect(trace.schemaVersion).toBe("1.5.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {

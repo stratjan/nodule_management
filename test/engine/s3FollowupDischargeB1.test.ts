@@ -1,0 +1,111 @@
+// issue #15 Candidate B1 (architecture: issue #28): exact clinical regression matrix for the
+// governed successor rule ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1 -- two independently
+// sufficient S3 discharge criteria (volume-stability, VDT>600) inside one sufficientConditionGroups
+// -shaped Atomic Clinical Rule. The generic reduction mechanism itself is proven separately and
+// source-agnostically in sufficientConditionGroups.test.ts; this file exercises only the real,
+// governed clinical content and its exact boundary.
+import { describe, expect, it } from "vitest";
+import { evaluate } from "../../src/engine/evaluate";
+import { loadTestRelease } from "../helpers/loadTestRelease";
+import type { ClinicalInputState } from "../../src/engine/types";
+
+const release = loadTestRelease();
+
+function outcomeFor(trace: ReturnType<typeof evaluate>, sourceId: string) {
+  return trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === sourceId);
+}
+
+const followUpBaseInput: ClinicalInputState = {
+  nodule_morphology: "solid",
+  assessment_context: "incidental",
+  assessment_timepoint: "follow-up",
+  nodule_count: 1,
+  age: 55,
+  known_malignancy_history: false,
+  immunocompromised: false,
+};
+
+describe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1 clinical regression matrix (issue #15 Candidate B1)", () => {
+  it("case 1: volume-stability true, VDT absent -> RECOMMENDATION, matchedSufficientConditionGroupIds = [volume-stability]", () => {
+    const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedRuleId).toBe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["volume-stability"]);
+  });
+
+  it("case 2: volume-stability false, VDT absent -> INSUFFICIENT_INPUT", () => {
+    const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: false }, release);
+    expect(outcomeFor(trace, "s3")?.state).toBe("INSUFFICIENT_INPUT");
+  });
+
+  it("case 3: volume-stability true, VDT 700 -> RECOMMENDATION, both groupIds reported, no AmbiguousRuleMatchError", () => {
+    const input = {
+      ...followUpBaseInput,
+      s3_volume_stability_criterion_met: true,
+      s3_vdt_days: 700,
+    };
+    let trace: ReturnType<typeof evaluate> | undefined;
+    expect(() => {
+      trace = evaluate(input, release);
+    }).not.toThrow();
+    const s3 = outcomeFor(trace!, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["volume-stability", "vdt-over-600"]);
+  });
+
+  it("case 4: volume-stability false, VDT 700 -> RECOMMENDATION, matchedSufficientConditionGroupIds = [vdt-over-600]", () => {
+    const trace = evaluate(
+      { ...followUpBaseInput, s3_volume_stability_criterion_met: false, s3_vdt_days: 700 },
+      release,
+    );
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["vdt-over-600"]);
+  });
+
+  it("case 5: volume-stability absent, VDT 700 -> RECOMMENDATION, matchedSufficientConditionGroupIds = [vdt-over-600]", () => {
+    const trace = evaluate({ ...followUpBaseInput, s3_vdt_days: 700 }, release);
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["vdt-over-600"]);
+  });
+
+  it("case 6: volume-stability false, VDT exactly 600 (boundary, not >600) -> OUTSIDE_CURRENT_RULESET_SCOPE", () => {
+    const trace = evaluate(
+      { ...followUpBaseInput, s3_volume_stability_criterion_met: false, s3_vdt_days: 600 },
+      release,
+    );
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
+    expect(s3?.recommendation).toBeUndefined();
+  });
+
+  it("case 7: volume-stability false, VDT 601 (one day over boundary) -> RECOMMENDATION, matchedSufficientConditionGroupIds = [vdt-over-600]", () => {
+    const trace = evaluate(
+      { ...followUpBaseInput, s3_volume_stability_criterion_met: false, s3_vdt_days: 601 },
+      release,
+    );
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["vdt-over-600"]);
+  });
+
+  it("volume-stability true, VDT 250 (below B2's own future <400 threshold) -> RECOMMENDATION via volume-stability only; no B2 action is inferred from VDT 250", () => {
+    const trace = evaluate(
+      { ...followUpBaseInput, s3_volume_stability_criterion_met: true, s3_vdt_days: 250 },
+      release,
+    );
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.state).toBe("RECOMMENDATION");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["volume-stability"]);
+    expect((s3?.recommendation as any)?.noRoutineFollowUp).toBe(true);
+  });
+
+  it("the grouped rule declares provenanceAnchors, not singular provenance, with one anchor per criterion", () => {
+    const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
+    const s3 = outcomeFor(trace, "s3");
+    expect(s3?.recommendation && "provenanceAnchors" in s3.recommendation).toBe(true);
+    expect(s3?.recommendation && "provenance" in s3.recommendation).toBe(false);
+  });
+});

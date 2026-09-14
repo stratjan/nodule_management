@@ -268,6 +268,26 @@ export function hasMultiAnchorProvenance(
 
 export type MeasurementBasis = "diameter" | "volume-preferred";
 
+/**
+ * issue #28/#15 Candidate B1: one AND-conjoined, independently sufficient alternative inside a
+ * sufficientConditionGroups-shaped Atomic Clinical Rule. `conditions` combine as AND (the exact
+ * same fixed vocabulary and evaluateConditions()/classifyConditions() interpreter as every other
+ * rule kind, ADR-0009) -- across groups on the same rule, any one group matching is sufficient
+ * (OR), evaluated entirely inside evaluateSingleAtomicRule(), never as two separate Atomic Rules.
+ * `groupId` is a stable, author-assigned identifier -- never derived from array position,
+ * condition content, or rationale text -- used only to report which group(s) actually matched
+ * (RecommendationPayload.matchedSufficientConditionGroupIds) and to cross-reference this group's
+ * own citation (`provenanceRole`, which must match exactly one `ProvenanceAnchor.role` on the
+ * same rule's required `provenanceAnchors[]` -- schema.ts enforces both the existence and the
+ * uniqueness of that cross-reference for a grouped rule). No nesting, no NOT, no OR-of-OR -- this
+ * is a single, fixed level of grouping, not a general Boolean expression language.
+ */
+export interface SufficientConditionGroup {
+  groupId: string;
+  conditions: Condition[];
+  provenanceRole: string;
+}
+
 export type AtomicClinicalRuleRevision = RuleRevisionBase & {
   kind: "atomic-clinical-rule";
   recommendationSourceId: string;
@@ -312,6 +332,14 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * evaluateConditions() interpreter as every other rule kind (ADR-0009) -- no new operator, no
    * new evaluation model, no OR/NOT. */
   conditions?: Condition[];
+  /** issue #28/#15 Candidate B1: the third, mutually exclusive Atomic Clinical Rule evaluation
+   * shape -- a bounded OR-of-AND over `SufficientConditionGroup[]`. Mutually exclusive with
+   * measurementBasis/diameterConditions/volumeConditions/measurementConventionId/
+   * solidComponentMeasurementConventionId/operandInapplicabilityPreconditions AND with `conditions`
+   * above (schema.ts's cross-field refines) -- never combined with either other shape. A rule
+   * declaring this must use the multi-anchor `provenanceAnchors` form of ProvenanceCarrier (never
+   * singular `provenance`), since each group cross-references its own anchor by role. */
+  sufficientConditionGroups?: SufficientConditionGroup[];
   recommendation: RecommendationContent;
 } & ProvenanceCarrier;
 
@@ -378,6 +406,14 @@ export interface ClinicalInputState {
    * name deliberately encodes source + measurement type + exact criterion so a future VDT/
    * Fleischner/BTS/>=25%-growth rule cannot silently reuse it. */
   s3_volume_stability_criterion_met?: boolean;
+  /** issue #15 Candidate B1: explicit clinician-entered volume-doubling time in days for the
+   * currently followed nodule -- never computed by the app from prior/current volumes and an
+   * elapsed interval (no VDT formula exists in the Local SOP; #15 grilling §6). Absent = not yet
+   * supplied. Deliberately not scoped to one threshold in its own name (unlike
+   * s3_volume_stability_criterion_met above) since this is a raw measurement value a future,
+   * separately-approved rule could reuse under a different threshold, not a single pre-evaluated
+   * criterion. */
+  s3_vdt_days?: number;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---
@@ -424,6 +460,13 @@ export type RecommendationPayload = RecommendationContent &
      * match -- the non-measurement evaluation basis. Mutually exclusive with measurementBasisUsed
      * above; never both set for the same match. */
     clinicalCriterionUsed?: ClinicalCriterionBasis;
+    /** issue #28/#15 Candidate B1: present only when the matched Atomic Clinical Rule was
+     * sufficientConditionGroups-shaped -- every groupId that independently classified MATCHED,
+     * in the rule's own authored declaration order (never just the first, never sorted by
+     * clinical meaning, never used as a priority mechanism). Absent for every other rule shape;
+     * never fabricated. matchedRuleId/matchedRevisionId stay singular regardless -- exactly one
+     * Atomic Clinical Rule always matched, by construction. */
+    matchedSufficientConditionGroupIds?: string[];
   };
 
 /** Narrows a RecommendationPayload to its measurement-shaped arm, for callers (e.g.
