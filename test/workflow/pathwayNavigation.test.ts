@@ -5,9 +5,10 @@
 // this only governs UI navigation.
 import { describe, expect, it } from "vitest";
 import {
+  applyGr4FollowUpReset,
   canContinuePastPathwayStep,
   isNoduleCountOutOfScope,
-  shouldClearS3FollowUpCriterion,
+  shouldClearGr4FollowUpFields,
 } from "../../src/workflow/pathwayNavigation";
 import type { ClinicalInputState } from "../../src/engine/types";
 
@@ -47,49 +48,131 @@ describe("canContinuePastPathwayStep", () => {
   });
 });
 
-describe("shouldClearS3FollowUpCriterion (issue #15 Candidate A0, §13 reset/stale-state behavior)", () => {
+describe("shouldClearGr4FollowUpFields (issue #15 Candidate A0/B1, §13 reset/stale-state behavior)", () => {
   it("clears when morphology changes away from solid", () => {
-    expect(shouldClearS3FollowUpCriterion("nodule_morphology", "part-solid")).toBe(true);
-    expect(shouldClearS3FollowUpCriterion("nodule_morphology", "pure-ground-glass")).toBe(true);
+    expect(shouldClearGr4FollowUpFields("nodule_morphology", "part-solid")).toBe(true);
+    expect(shouldClearGr4FollowUpFields("nodule_morphology", "pure-ground-glass")).toBe(true);
   });
 
   it("does NOT clear when morphology is (re-)set to solid", () => {
-    expect(shouldClearS3FollowUpCriterion("nodule_morphology", "solid")).toBe(false);
+    expect(shouldClearGr4FollowUpFields("nodule_morphology", "solid")).toBe(false);
   });
 
   it("clears when assessment_timepoint changes away from follow-up", () => {
-    expect(shouldClearS3FollowUpCriterion("assessment_timepoint", "initial")).toBe(true);
+    expect(shouldClearGr4FollowUpFields("assessment_timepoint", "initial")).toBe(true);
   });
 
   it("does NOT clear when assessment_timepoint is (re-)set to follow-up", () => {
-    expect(shouldClearS3FollowUpCriterion("assessment_timepoint", "follow-up")).toBe(false);
+    expect(shouldClearGr4FollowUpFields("assessment_timepoint", "follow-up")).toBe(false);
   });
 
   it("clears when assessment_context changes away from incidental", () => {
-    expect(shouldClearS3FollowUpCriterion("assessment_context", "screening")).toBe(true);
+    expect(shouldClearGr4FollowUpFields("assessment_context", "screening")).toBe(true);
   });
 
   it("clears when nodule_count changes away from 1", () => {
-    expect(shouldClearS3FollowUpCriterion("nodule_count", 2)).toBe(true);
+    expect(shouldClearGr4FollowUpFields("nodule_count", 2)).toBe(true);
   });
 
   it("does NOT clear when nodule_count is (re-)set to 1", () => {
-    expect(shouldClearS3FollowUpCriterion("nodule_count", 1)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("nodule_count", 1)).toBe(false);
   });
 
-  it("does NOT clear on any of the three S3 applicability fields -- these are a separate clinical fact, not the attestation itself", () => {
-    expect(shouldClearS3FollowUpCriterion("age", 70)).toBe(false);
-    expect(shouldClearS3FollowUpCriterion("known_malignancy_history", true)).toBe(false);
-    expect(shouldClearS3FollowUpCriterion("immunocompromised", true)).toBe(false);
+  it("does NOT clear on any of the three S3 applicability fields -- these are a separate clinical fact, not either GR-4 follow-up field itself", () => {
+    expect(shouldClearGr4FollowUpFields("age", 70)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("known_malignancy_history", true)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("immunocompromised", true)).toBe(false);
   });
 
-  it("does NOT clear when the attestation field itself changes", () => {
-    expect(shouldClearS3FollowUpCriterion("s3_volume_stability_criterion_met", true)).toBe(false);
-    expect(shouldClearS3FollowUpCriterion("s3_volume_stability_criterion_met", false)).toBe(false);
+  it("does NOT clear when either GR-4 follow-up field itself changes", () => {
+    expect(shouldClearGr4FollowUpFields("s3_volume_stability_criterion_met", true)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("s3_volume_stability_criterion_met", false)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("s3_vdt_days", 700)).toBe(false);
   });
 
   it("does NOT clear on an unrelated/unknown field id", () => {
-    expect(shouldClearS3FollowUpCriterion("nodule_size_mm", 7)).toBe(false);
+    expect(shouldClearGr4FollowUpFields("nodule_size_mm", 7)).toBe(false);
+  });
+});
+
+describe("applyGr4FollowUpReset (issue #15 Candidate B1): actual state-transition behavior, both GR-4 follow-up fields", () => {
+  const bothFieldsSet: ClinicalInputState = {
+    nodule_morphology: "solid",
+    assessment_context: "incidental",
+    assessment_timepoint: "follow-up",
+    nodule_count: 1,
+    s3_volume_stability_criterion_met: true,
+    s3_vdt_days: 700,
+  };
+
+  it("morphology away from solid clears both fields", () => {
+    const next = { ...bothFieldsSet, nodule_morphology: "part-solid" as const };
+    const result = applyGr4FollowUpReset(next, "nodule_morphology", "part-solid");
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(result.s3_vdt_days).toBeUndefined();
+  });
+
+  it("assessment_context away from incidental clears both fields", () => {
+    const next = { ...bothFieldsSet, assessment_context: "screening" };
+    const result = applyGr4FollowUpReset(next, "assessment_context", "screening");
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(result.s3_vdt_days).toBeUndefined();
+  });
+
+  it("assessment_timepoint away from follow-up clears both fields", () => {
+    const next = { ...bothFieldsSet, assessment_timepoint: "initial" as const };
+    const result = applyGr4FollowUpReset(next, "assessment_timepoint", "initial");
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(result.s3_vdt_days).toBeUndefined();
+  });
+
+  it("nodule_count away from 1 clears both fields", () => {
+    const next = { ...bothFieldsSet, nodule_count: 2 };
+    const result = applyGr4FollowUpReset(next, "nodule_count", 2);
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(result.s3_vdt_days).toBeUndefined();
+  });
+
+  it("an unrelated edit while GR-4 still applies preserves both fields", () => {
+    const next = { ...bothFieldsSet, age: 60 };
+    const result = applyGr4FollowUpReset(next, "age", 60);
+    expect(result.s3_volume_stability_criterion_met).toBe(true);
+    expect(result.s3_vdt_days).toBe(700);
+  });
+
+  it("the volume-stability attestation alone (no VDT ever entered) still clears exactly as before -- no regression on the existing A0 behavior", () => {
+    const volumeOnly: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      s3_volume_stability_criterion_met: true,
+    };
+    const next = { ...volumeOnly, nodule_morphology: "pure-ground-glass" as const };
+    const result = applyGr4FollowUpReset(next, "nodule_morphology", "pure-ground-glass");
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+  });
+
+  it("returning later to the exact GR-4 shape does not resurrect a previously-cleared value -- the clinician must re-enter it", () => {
+    // Round-trip: leave GR-4 (clears both), then re-enter the exact GR-4 shape via a second edit.
+    // applyGr4FollowUpReset only ever deletes; nothing repopulates the fields on re-entry, so the
+    // caller (App.tsx) naturally never resurrects them as long as it does not carry over deleted
+    // state -- verified here by simulating both edits in sequence.
+    const leftGr4 = applyGr4FollowUpReset(
+      { ...bothFieldsSet, nodule_morphology: "part-solid" as const },
+      "nodule_morphology",
+      "part-solid",
+    );
+    expect(leftGr4.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(leftGr4.s3_vdt_days).toBeUndefined();
+
+    const backToGr4 = applyGr4FollowUpReset(
+      { ...leftGr4, nodule_morphology: "solid" },
+      "nodule_morphology",
+      "solid",
+    );
+    expect(backToGr4.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(backToGr4.s3_vdt_days).toBeUndefined();
   });
 });
 

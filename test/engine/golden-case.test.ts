@@ -358,7 +358,7 @@ const followUpBaseInput: ClinicalInputState = {
   immunocompromised: false,
 };
 
-describe("Golden Clinical Case G1 (solid follow-up, S3 volume-stability criterion confirmed) -- issue #15 Candidate A0", () => {
+describe("Golden Clinical Case G1 (solid follow-up, S3 volume-stability criterion confirmed) -- issue #15 Candidate A0/B1", () => {
   const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
 
   it("passes the Clinical Pathway Gate onto the solid follow-up pathway", () => {
@@ -368,12 +368,13 @@ describe("Golden Clinical Case G1 (solid follow-up, S3 volume-stability criterio
     });
   });
 
-  it("S3 produces RECOMMENDATION: no routine follow-up, clinician-attestation basis, no fabricated measurement basis", () => {
+  it("S3 produces RECOMMENDATION: no routine follow-up via the volume-stability group, no fabricated measurement basis or clinicalCriterionUsed", () => {
     const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
     expect(s3?.state).toBe("RECOMMENDATION");
-    expect(s3?.recommendation?.matchedRuleId).toBe("ACR-S3-FOLLOWUP-VOLUME-STABLE");
+    expect(s3?.recommendation?.matchedRuleId).toBe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT");
     expect((s3?.recommendation as any)?.noRoutineFollowUp).toBe(true);
-    expect(s3?.recommendation?.clinicalCriterionUsed).toBe("clinician-attestation");
+    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["volume-stability"]);
+    expect(s3?.recommendation?.clinicalCriterionUsed).toBeUndefined();
     expect(s3?.recommendation?.measurementBasisUsed).toBeUndefined();
     expect(s3?.recommendation?.measurementsUsed).toBeUndefined();
   });
@@ -388,10 +389,33 @@ describe("Golden Clinical Case G1 (solid follow-up, S3 volume-stability criterio
   });
 });
 
-describe("Golden Clinical Case G2 (solid follow-up, S3 criterion explicitly not met) -- issue #15 Candidate A0", () => {
+describe("Golden Clinical Case G2 (solid follow-up, volume-stability criterion explicitly not met, VDT not supplied) -- issue #15 Candidate A0/B1", () => {
   const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: false }, release);
 
-  it("S3 produces OUTSIDE_CURRENT_RULESET_SCOPE, never an inferred growth/work-up recommendation", () => {
+  // issue #28/#15 Candidate B1: since B1, the volume-stability group being definitively false no
+  // longer resolves the whole rule -- the sibling vdt-over-600 group's own state (here:
+  // INDETERMINATE, s3_vdt_days unsupplied) still governs the overall verdict per the approved
+  // Kleene-OR reduction (any INDETERMINATE, absent any MATCHED, wins over NOT_MATCHED). Correctly
+  // INSUFFICIENT_INPUT, not OUTSIDE_CURRENT_RULESET_SCOPE -- the VDT criterion cannot yet be ruled
+  // out. See G2b below for the fully-determined "both criteria false" case.
+  it("S3 produces INSUFFICIENT_INPUT -- the sibling VDT group is still indeterminate, never an inferred growth/work-up recommendation", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("INSUFFICIENT_INPUT");
+    expect(s3?.recommendation).toBeUndefined();
+  });
+
+  it("Recommendation Set is empty -- no complement-inferred recommendation exists anywhere in this Release", () => {
+    expect(trace.recommendationSet).toHaveLength(0);
+  });
+});
+
+describe("Golden Clinical Case G2b (solid follow-up, both S3 discharge criteria explicitly not met) -- issue #15 Candidate B1", () => {
+  const trace = evaluate(
+    { ...followUpBaseInput, s3_volume_stability_criterion_met: false, s3_vdt_days: 600 },
+    release,
+  );
+
+  it("S3 produces OUTSIDE_CURRENT_RULESET_SCOPE once both groups are definitively false (VDT exactly 600, the strict boundary), never an inferred growth/work-up recommendation", () => {
     const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
     expect(s3?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
     expect(s3?.recommendation).toBeUndefined();

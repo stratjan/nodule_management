@@ -95,6 +95,14 @@ export function RecommendationView({ recommendation }: { recommendation: Recomme
           "Measurement basis used" line for it; show its own, accurate audit line instead. */}
       {hasMeasurementBasis(recommendation) ? (
         <p className="basis">Measurement basis used: {recommendation.measurementBasisUsed}</p>
+      ) : recommendation.matchedSufficientConditionGroupIds ? (
+        // issue #28/#15 Candidate B1: a sufficientConditionGroups-shaped match may have been
+        // reached via one or more independently sufficient criteria -- never collapse this into
+        // the single "clinician attestation" label below, which would misdescribe a VDT-only
+        // match. Render the governed group identity itself, nothing invented beyond it.
+        <p className="basis">
+          Matched sufficient criteria: {recommendation.matchedSufficientConditionGroupIds.join(", ")}
+        </p>
       ) : recommendation.clinicalCriterionUsed ? (
         <p className="basis">Clinical criterion used: clinician attestation</p>
       ) : null}

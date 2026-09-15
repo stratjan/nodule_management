@@ -275,7 +275,7 @@ describe("cross-pathway Atomic Clinical Rule isolation (issue #17)", () => {
     const followUpTrace = evaluate(followUpInput, release);
     expect(outcomeFor(initialTrace, "s3")?.recommendation?.matchedRuleId).toBe("ACR-S3-5TO8MM");
     expect(outcomeFor(followUpTrace, "s3")?.recommendation?.matchedRuleId).toBe(
-      "ACR-S3-FOLLOWUP-VOLUME-STABLE",
+      "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
     );
   });
 });

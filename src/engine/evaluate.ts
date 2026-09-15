@@ -26,6 +26,7 @@ import type {
   RuleSetRelease,
   SourceApplicabilityRevision,
   SourceEvaluationOutcome,
+  SufficientConditionGroup,
 } from "./types";
 import {
   hasMultiAnchorProvenance,
@@ -36,8 +37,8 @@ import {
   OPERAND_SHADOW_FIELD,
 } from "./types";
 
-export const ENGINE_VERSION = "1.4.0";
-export const SCHEMA_VERSION = "1.4.0";
+export const ENGINE_VERSION = "1.5.0";
+export const SCHEMA_VERSION = "1.5.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -231,11 +232,24 @@ type RecommendationEvaluationBasis =
       measurementBasisUsed: "diameter" | "volume";
       measurementsUsed?: MeasurementsUsed;
       clinicalCriterionUsed?: never;
+      matchedSufficientConditionGroupIds?: never;
     }
   | {
       clinicalCriterionUsed: ClinicalCriterionBasis;
       measurementBasisUsed?: never;
       measurementsUsed?: never;
+      matchedSufficientConditionGroupIds?: never;
+    }
+  | {
+      /** issue #28/#15 Candidate B1: present only for a sufficientConditionGroups-shaped match --
+       * every groupId that independently classified MATCHED, in authored declaration order. Never
+       * reuses clinicalCriterionUsed's own closed "clinician-attestation" vocabulary: that label is
+       * specific to the bare-`conditions` shape and would misdescribe a match reached via a
+       * numeric (VDT) group, so this shape gets its own, honest evidence field instead. */
+      matchedSufficientConditionGroupIds: string[];
+      measurementBasisUsed?: never;
+      measurementsUsed?: never;
+      clinicalCriterionUsed?: never;
     };
 
 function buildRecommendationPayload(
@@ -262,6 +276,45 @@ function buildRecommendationPayload(
 interface SingleRuleResult {
   rule: AtomicClinicalRuleRevision;
   outcome: SourceEvaluationOutcome;
+}
+
+/**
+ * issue #28/#15 Candidate B1: three-valued reduction across a sufficientConditionGroups-shaped
+ * rule's own groups. Each group is classified independently via the existing, unmodified
+ * classifyConditions() (issue #17's own per-condition three-valued semantics) -- AND within the
+ * group. Across groups, standard three-valued (Kleene) OR: any MATCHED wins outright regardless of
+ * another group's indeterminacy or contradiction; failing that, any INDETERMINATE means the
+ * overall verdict cannot yet be ruled out as false; only when every group is definitively
+ * NOT_MATCHED does the rule as a whole fail to match. Generic and source-agnostic -- contains no
+ * rule-specific, source-specific, or threshold-specific literal of any kind; reusable by any
+ * future sufficientConditionGroups-shaped rule on any source.
+ */
+function reduceSufficientConditionGroups(
+  groups: SufficientConditionGroup[],
+  input: ClinicalInputState,
+): { state: "MATCHED" | "NOT_MATCHED" | "INDETERMINATE"; matchedGroupIds: string[]; missingFields: string[] } {
+  const classifications = groups.map((group) => ({
+    group,
+    result: classifyConditions(group.conditions, input),
+  }));
+
+  const matchedGroupIds = classifications
+    .filter((c) => c.result.state === "MATCHED")
+    .map((c) => c.group.groupId);
+  if (matchedGroupIds.length > 0) {
+    return { state: "MATCHED", matchedGroupIds, missingFields: [] };
+  }
+
+  const indeterminate = classifications.filter((c) => c.result.state === "INDETERMINATE");
+  if (indeterminate.length > 0) {
+    return {
+      state: "INDETERMINATE",
+      matchedGroupIds: [],
+      missingFields: [...new Set(indeterminate.flatMap((c) => c.result.missingFields))],
+    };
+  }
+
+  return { state: "NOT_MATCHED", matchedGroupIds: [], missingFields: [] };
 }
 
 function evaluateSingleAtomicRule(
@@ -294,6 +347,34 @@ function evaluateSingleAtomicRule(
   // and none of the measurement-specific dispatch below (convention lookups, dual-measurement
   // resolution, volume/diameter discordance) is reachable for it.
   if (rule.measurementBasis === undefined) {
+    // issue #28/#15 Candidate B1: a sufficientConditionGroups-shaped rule is a nested dispatch off
+    // the same "no measurementBasis" branch -- schema.ts's three-way XOR guarantees `conditions`
+    // and `sufficientConditionGroups` are never both present, so this check is exhaustive with the
+    // unchanged bare-`conditions` path below.
+    if (rule.sufficientConditionGroups !== undefined) {
+      const reduction = reduceSufficientConditionGroups(rule.sufficientConditionGroups, input);
+      if (reduction.state === "INDETERMINATE") {
+        return { rule, outcome: insufficientInput(reduction.missingFields) };
+      }
+      if (reduction.state === "MATCHED") {
+        return {
+          rule,
+          outcome: buildRecommendation({ matchedSufficientConditionGroupIds: reduction.matchedGroupIds }),
+        };
+      }
+      return {
+        rule,
+        outcome: {
+          recommendationSourceId: sourceId,
+          state: "OUTSIDE_CURRENT_RULESET_SCOPE",
+          reason:
+            "Source applies and sufficient input was given, but none of this rule's independently " +
+            "sufficient condition groups was met, and no Approved Atomic Clinical Rule in the " +
+            "Active Rule-Set Release covers this state.",
+        },
+      };
+    }
+
     const result = evaluateConditions(rule.conditions!, input);
     if (!result.allFieldsPresent) {
       return { rule, outcome: insufficientInput(result.missingFields) };
