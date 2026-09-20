@@ -653,28 +653,48 @@ function evaluateSingleAtomicRule(
 }
 
 /**
+ * issue #30 (ADR-0011): an explicitly locale-independent, code-unit-based lexical comparator over
+ * (ruleId, revisionId) -- never `localeCompare()`, whose collation can depend on runtime
+ * locale/ICU configuration and would make the deterministic engine contract environment-
+ * dependent. Used to give the exactly-one-recommendation + unresolved-sibling branch below a
+ * canonical identity order, independent of the current locale, filesystem order, or the order
+ * rules happen to appear in the Rule-Set Release's own revisions array.
+ */
+function compareRuleIdentity(a: AtomicClinicalRuleRevision, b: AtomicClinicalRuleRevision): number {
+  if (a.ruleId < b.ruleId) return -1;
+  if (a.ruleId > b.ruleId) return 1;
+  if (a.revisionId < b.revisionId) return -1;
+  if (a.revisionId > b.revisionId) return 1;
+  return 0;
+}
+
+/**
  * issue #20/#30 (ADR-0011): evaluate-all-then-classify across every Atomic Clinical Rule for one
- * source -- no short-circuit, no first-match/file-order semantics anywhere in this function.
+ * source -- no short-circuit anywhere in this function (every rule is always evaluated).
  *
  * Step 1 (unconditional, checked first, never suppressed or bypassed by any non-blocking
  * relation): more than one definite RECOMMENDATION match throws AmbiguousRuleMatchError, exactly
  * as before issue #30.
  *
- * Step 2: with exactly one definite match and one or more unresolved (INSUFFICIENT_INPUT)
- * siblings, only the matched rule's own declared `nonBlockingUnresolvedSiblings` is consulted --
- * never the sibling's, never inferred from conditions/thresholds/recommendation content/rule
- * identity strings/provenance similarity. Unresolved siblings are partitioned into
- * `toleratedUnresolved` (covered by an exact (ruleId, revisionId) match) and `blockingUnresolved`
- * (everything else). Zero blocking siblings -> the recommendation is released, annotated with
- * `toleratedUnresolvedSiblings`. One or more blocking siblings remain -> INSUFFICIENT_INPUT,
- * whose reason must come only from a genuinely blocking sibling, never a tolerated one --
- * `blockingUnresolved` is stable-sorted by `(ruleId, revisionId)` before its first element is
- * read, so the representative is deterministic and independent of array/file/release order.
+ * Step 2 (issue #30's own order-independent selection): with exactly one definite match and one
+ * or more unresolved (INSUFFICIENT_INPUT) siblings, only the matched rule's own declared
+ * `nonBlockingUnresolvedSiblings` is consulted -- never the sibling's, never inferred from
+ * conditions/thresholds/recommendation content/rule identity strings/provenance similarity.
+ * Unresolved siblings are partitioned into `toleratedUnresolved` (covered by an exact (ruleId,
+ * revisionId) match) and `blockingUnresolved` (everything else); both are sorted into the same
+ * canonical `compareRuleIdentity()` order before being read further. Zero blocking siblings ->
+ * the recommendation is released, annotated with `toleratedUnresolvedSiblings` in that canonical
+ * order. One or more blocking siblings remain -> INSUFFICIENT_INPUT, whose reason must come only
+ * from a genuinely blocking sibling, never a tolerated one -- the representative is
+ * `blockingUnresolved`'s first element after this same canonical sort, so it is deterministic and
+ * independent of array/file/release order.
  *
- * Step 3 (unchanged from before issue #30): zero definite matches with any unresolved sibling ->
- * INSUFFICIENT_INPUT; zero definite matches and zero unresolved siblings -> every rule
- * individually reported OUTSIDE_CURRENT_RULESET_SCOPE, and any one of them (deterministically,
- * the first) is the representative final outcome.
+ * Step 3 (pre-existing, intentionally unchanged by issue #30): zero definite matches with any
+ * unresolved sibling -> INSUFFICIENT_INPUT (`unresolved[0].outcome`, first-in-array); zero
+ * definite matches and zero unresolved siblings -> every rule individually reported
+ * OUTSIDE_CURRENT_RULESET_SCOPE, and `results[0].outcome` (first-in-array) is the representative
+ * final outcome, since their reason text does not depend on which specific rule. Issue #30 does
+ * not touch, redesign, or extend the ordering guarantee of this legacy fallback.
  */
 function evaluateAtomicRulesForSource(
   rules: AtomicClinicalRuleRevision[],
@@ -705,12 +725,12 @@ function evaluateAtomicRulesForSource(
         (d) => d.siblingRuleId === siblingRule.ruleId && d.siblingRevisionId === siblingRule.revisionId,
       );
 
-    const toleratedUnresolved = unresolved.filter((u) => covers(u.rule));
+    const toleratedUnresolved = unresolved
+      .filter((u) => covers(u.rule))
+      .sort((a, b) => compareRuleIdentity(a.rule, b.rule));
     const blockingUnresolved = unresolved
       .filter((u) => !covers(u.rule))
-      .sort((a, b) =>
-        `${a.rule.ruleId}\0${a.rule.revisionId}`.localeCompare(`${b.rule.ruleId}\0${b.rule.revisionId}`),
-      );
+      .sort((a, b) => compareRuleIdentity(a.rule, b.rule));
 
     if (blockingUnresolved.length === 0) {
       return {
@@ -727,7 +747,7 @@ function evaluateAtomicRulesForSource(
     return blockingUnresolved[0].outcome;
   }
 
-  // Zero definite recommendations.
+  // Zero definite recommendations. Pre-existing, unchanged by issue #30 (see Step 3 above).
   if (unresolved.length > 0) return unresolved[0].outcome;
 
   // Zero matches, none insufficient: every rule individually reported

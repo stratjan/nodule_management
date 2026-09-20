@@ -125,22 +125,32 @@ describe("nonBlockingUnresolvedSiblings generic aggregation semantics (issue #30
     expect(outcomeFor(trace)?.state).toBe("INSUFFICIENT_INPUT");
   });
 
-  it("4. recommendation + two unresolved siblings, both covered -> recommendation; audit includes both, order-independently", () => {
+  it("4. recommendation + two unresolved siblings, both covered -> recommendation; audit includes both in canonical (ruleId, revisionId) order, independent of Release-array order", () => {
     const ruleB = makeRule("TEST-NBUS-B4", "field_b");
     const ruleC = makeRule("TEST-NBUS-C4", "field_c");
     const ruleA = makeRule("TEST-NBUS-A4", "field_a", [
       { siblingRuleId: ruleB.ruleId, siblingRevisionId: ruleB.revisionId },
       { siblingRuleId: ruleC.ruleId, siblingRevisionId: ruleC.revisionId },
     ]);
-    const release = buildRuleSetRelease([gate, applicability, ruleA, ruleB, ruleC]);
+    const input = { ...baseInput, field_a: true } as unknown as ClinicalInputState;
 
-    const trace = evaluate({ ...baseInput, field_a: true } as unknown as ClinicalInputState, release);
-    const outcome = outcomeFor(trace);
-    expect(outcome?.state).toBe("RECOMMENDATION");
-    expect(outcome?.toleratedUnresolvedSiblings?.map((s) => s.ruleId).sort()).toEqual(
-      [ruleB.ruleId, ruleC.ruleId].sort(),
-    );
-    expect(outcome?.toleratedUnresolvedSiblings).toHaveLength(2);
+    const releaseForward = buildRuleSetRelease([gate, applicability, ruleA, ruleB, ruleC]);
+    const outcomeForward = outcomeFor(evaluate(input, releaseForward));
+
+    const releaseReversed = buildRuleSetRelease([gate, applicability, ruleA, ruleC, ruleB]);
+    const outcomeReversed = outcomeFor(evaluate(input, releaseReversed));
+
+    expect(outcomeForward?.state).toBe("RECOMMENDATION");
+    // "TEST-NBUS-B4" < "TEST-NBUS-C4" lexically -- the canonical (ruleId, revisionId) order.
+    expect(outcomeForward?.toleratedUnresolvedSiblings).toEqual([
+      { ruleId: ruleB.ruleId, revisionId: ruleB.revisionId },
+      { ruleId: ruleC.ruleId, revisionId: ruleC.revisionId },
+    ]);
+
+    // The complete SourceEvaluationOutcome (state, recommendation, toleratedUnresolvedSiblings
+    // order and all) is deep-equal regardless of B/C's authored order in the Release's own
+    // revisions array.
+    expect(outcomeReversed).toEqual(outcomeForward);
   });
 
   it("5. recommendation A matches; B covered/non-blocking, C not covered/blocking -> INSUFFICIENT_INPUT, reason from C only, never B; reversing B/C authored order yields a byte-identical outcome", () => {
