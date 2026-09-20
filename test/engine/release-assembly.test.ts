@@ -10,6 +10,8 @@ import {
   NonApprovedRevisionError,
   MissingApprovalEventError,
   OverlappingRuleConditionsError,
+  UnknownNonBlockingSiblingReferenceError,
+  MismatchedNonBlockingSiblingScopeError,
 } from "../../src/engine/releaseBuilder";
 import { ruleRevisionSchema } from "../../src/engine/schema";
 import type { RuleRevision } from "../../src/engine/types";
@@ -122,5 +124,158 @@ describe("Rule-Set Release assembly", () => {
         "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
       ]),
     );
+  });
+});
+
+// issue #30 (ADR-0011): release-time validation of declared nonBlockingUnresolvedSiblings
+// relations. Source-agnostic synthetic fixtures only, built standalone (never combined with the
+// real Approved set) -- mirrors sufficientConditionGroups.test.ts/ruleAmbiguity.test.ts's own
+// discipline. #30 introduces no new real governed rule file, so the existing 15-revision/exact-
+// ruleId-list assertions above are left entirely untouched.
+describe("issue #30: nonBlockingUnresolvedSiblings release-time validation", () => {
+  const syntheticProvenance = {
+    sourceDocument: "test fixture -- not a real clinical source",
+    version: "n/a",
+    originalLanguage: "English",
+    sourceType: "Synthetic test fixture",
+    locator: "test/engine/release-assembly.test.ts",
+  };
+
+  function rev(raw: unknown): RuleRevision {
+    return ruleRevisionSchema.parse(raw) as RuleRevision;
+  }
+
+  function gateFor(pathwayId: string, ruleId: string) {
+    return rev({
+      ruleId,
+      revisionId: `${ruleId}-r1`,
+      kind: "pathway-gate",
+      approvalStatus: "Approved",
+      approvalEvent: { by: "test-fixture", at: "2026-01-01" },
+      provenance: syntheticProvenance,
+      clinicalPathwayId: pathwayId,
+      conditions: [{ field: `test_only_gate_field_${ruleId}`, op: "eq", value: "yes" }],
+    });
+  }
+
+  function atomicRuleFor(
+    ruleId: string,
+    recommendationSourceId: string,
+    clinicalPathwayId: string,
+    field: string,
+    nonBlockingUnresolvedSiblings?: { siblingRuleId: string; siblingRevisionId: string }[],
+  ) {
+    return rev({
+      ruleId,
+      revisionId: `${ruleId}-r1`,
+      kind: "atomic-clinical-rule",
+      recommendationSourceId,
+      clinicalPathwayId,
+      approvalStatus: "Approved",
+      approvalEvent: { by: "test-fixture", at: "2026-01-01" },
+      provenance: syntheticProvenance,
+      conditions: [{ field, op: "eq", value: true }],
+      ...(nonBlockingUnresolvedSiblings
+        ? {
+            nonBlockingUnresolvedSiblings: nonBlockingUnresolvedSiblings.map((s) => ({
+              ...s,
+              provenance: syntheticProvenance,
+            })),
+          }
+        : {}),
+      recommendation: {
+        clinicalEndpoint: "test-only-not-a-real-recommendation",
+        intervals: ["n/a"],
+        rationale: "Synthetic fixture for issue #30 release-assembly testing only -- not real clinical content.",
+      },
+    });
+  }
+
+  const gateX = gateFor("incidental-solitary-solid-initial", "TEST-NBUS-RA-GATE-X");
+  const gateY = gateFor("incidental-solitary-pure-ggn-initial", "TEST-NBUS-RA-GATE-Y");
+
+  it("1. exact sibling (ruleId, revisionId), same source and same effective pathway -> accepted", () => {
+    const ruleB = atomicRuleFor(
+      "TEST-NBUS-RA-B1",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_b",
+    );
+    const ruleA = atomicRuleFor(
+      "TEST-NBUS-RA-A1",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_a",
+      [{ siblingRuleId: ruleB.ruleId, siblingRevisionId: ruleB.revisionId }],
+    );
+    expect(() => buildRuleSetRelease([gateX, ruleA, ruleB])).not.toThrow();
+  });
+
+  it("2. missing target (no such ruleId at all) -> UnknownNonBlockingSiblingReferenceError", () => {
+    const ruleA = atomicRuleFor(
+      "TEST-NBUS-RA-A2",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_a",
+      [{ siblingRuleId: "TEST-NBUS-RA-NO-SUCH-RULE", siblingRevisionId: "TEST-NBUS-RA-NO-SUCH-RULE-r1" }],
+    );
+    expect(() => buildRuleSetRelease([gateX, ruleA])).toThrow(UnknownNonBlockingSiblingReferenceError);
+  });
+
+  it("3. target ruleId exists but only under a different (stale) revisionId -> UnknownNonBlockingSiblingReferenceError", () => {
+    const ruleB = atomicRuleFor(
+      "TEST-NBUS-RA-B3",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_b",
+    );
+    const ruleA = atomicRuleFor(
+      "TEST-NBUS-RA-A3",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_a",
+      [{ siblingRuleId: ruleB.ruleId, siblingRevisionId: "TEST-NBUS-RA-B3-r2" }],
+    );
+    expect(() => buildRuleSetRelease([gateX, ruleA, ruleB])).toThrow(UnknownNonBlockingSiblingReferenceError);
+  });
+
+  it("4. sibling exists but with a different recommendationSourceId -> MismatchedNonBlockingSiblingScopeError", () => {
+    const ruleB = atomicRuleFor(
+      "TEST-NBUS-RA-B4",
+      "test-only-nbus-ra-OTHER-source",
+      "incidental-solitary-solid-initial",
+      "field_b",
+    );
+    const ruleA = atomicRuleFor(
+      "TEST-NBUS-RA-A4",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_a",
+      [{ siblingRuleId: ruleB.ruleId, siblingRevisionId: ruleB.revisionId }],
+    );
+    expect(() => buildRuleSetRelease([gateX, ruleA, ruleB])).toThrow(MismatchedNonBlockingSiblingScopeError);
+  });
+
+  it("5. sibling exists, same source, but a different effective Clinical Pathway -> MismatchedNonBlockingSiblingScopeError", () => {
+    const ruleY = atomicRuleFor(
+      "TEST-NBUS-RA-Y5",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-pure-ggn-initial",
+      "field_y",
+    );
+    const ruleX = atomicRuleFor(
+      "TEST-NBUS-RA-X5",
+      "test-only-nbus-ra-source",
+      "incidental-solitary-solid-initial",
+      "field_x",
+      [{ siblingRuleId: ruleY.ruleId, siblingRevisionId: ruleY.revisionId }],
+    );
+    expect(() => buildRuleSetRelease([gateX, gateY, ruleX, ruleY])).toThrow(
+      MismatchedNonBlockingSiblingScopeError,
+    );
+  });
+
+  it("does not weaken or otherwise interact with the existing overlap/pathway validation invariants -- the real Approved set builds unaffected (no rule in it declares nonBlockingUnresolvedSiblings)", () => {
+    expect(() => buildRuleSetRelease(loadApprovedPhase1Revisions())).not.toThrow();
   });
 });

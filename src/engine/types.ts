@@ -288,6 +288,25 @@ export interface SufficientConditionGroup {
   provenanceRole: string;
 }
 
+/**
+ * issue #30 (ADR-0011): a governed, directional, source-cited exception to "an unresolved
+ * (INSUFFICIENT_INPUT) sibling Atomic Clinical Rule blocks an otherwise-definite match for the
+ * same Recommendation Source". Declared on the rule that TOLERATES the sibling's unresolved
+ * status -- an entry here means "this rule may remain actionable when the specifically named
+ * sibling revision is unresolved". It does not mean mutual exclusivity, logical independence,
+ * equivalence, priority, or symmetry between the two rules; the reverse direction, if it holds,
+ * is a wholly separate entry declared on the sibling's own revision -- never inferred from this
+ * one (ADR-0011 "No inference"). Identity is structural only: `siblingRuleId`/`siblingRevisionId`
+ * are matched exactly, never by position, name-matching, or file/array order.
+ */
+export interface NonBlockingUnresolvedSibling {
+  siblingRuleId: string;
+  siblingRevisionId: string;
+  /** This directional relation's own citation -- independent of, and never merged with, this
+   * rule's or the sibling's own existing provenance/provenanceAnchors. */
+  provenance: Provenance;
+}
+
 export type AtomicClinicalRuleRevision = RuleRevisionBase & {
   kind: "atomic-clinical-rule";
   recommendationSourceId: string;
@@ -340,6 +359,14 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
    * declaring this must use the multi-anchor `provenanceAnchors` form of ProvenanceCarrier (never
    * singular `provenance`), since each group cross-references its own anchor by role. */
   sufficientConditionGroups?: SufficientConditionGroup[];
+  /** issue #30 (ADR-0011): directional, source-cited relations naming other Atomic Clinical Rule
+   * revisions (for the same recommendationSourceId and effective Clinical Pathway) whose own
+   * unresolved (INSUFFICIENT_INPUT) status does not block this rule's own definite match from
+   * being released. Optional -- absent means today's unchanged, fully conservative default
+   * (any unresolved sibling blocks). Valid alongside any of the three evaluation shapes
+   * (measurementBasis, conditions, sufficientConditionGroups); unrelated to how this rule itself
+   * evaluates. See NonBlockingUnresolvedSibling's own doc comment for the full contract. */
+  nonBlockingUnresolvedSiblings?: NonBlockingUnresolvedSibling[];
   recommendation: RecommendationContent;
 } & ProvenanceCarrier;
 
@@ -484,6 +511,13 @@ export interface SourceEvaluationOutcome {
   recommendation?: RecommendationPayload;
   measurementDiscordance?: boolean;
   measurementValues?: { diameter?: number; volume?: number };
+  /** issue #30 (ADR-0011): present only on a RECOMMENDATION-state outcome that was released
+   * despite one or more sibling Atomic Clinical Rules for this same source being unresolved
+   * (INSUFFICIENT_INPUT), because the matched rule's own governed nonBlockingUnresolvedSiblings
+   * covered every one of them. Absent in every other case, including an ordinary RECOMMENDATION
+   * with zero unresolved siblings -- never an empty array standing in for "not applicable". Not
+   * copied into RecommendationPayload/Recommendation -- trace/audit data only. */
+  toleratedUnresolvedSiblings?: { ruleId: string; revisionId: string }[];
 }
 
 // --- Recommendation Set (CONTEXT.md: RECOMMENDATION-state entries only) ---

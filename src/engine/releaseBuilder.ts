@@ -141,6 +141,85 @@ function assertPathwayBindingsValid(revisions: RuleRevision[]): void {
   }
 }
 
+/**
+ * issue #30 (ADR-0011): validates every declared nonBlockingUnresolvedSiblings entry across all
+ * Atomic Clinical Rules in this Release. Called after assertPathwayBindingsValid (needs
+ * effectiveClinicalPathwayId to compare pathway scope) and before assertNoOverlappingAtomicRules
+ * (an unrelated invariant; ordering between these two does not matter). Both failure modes are
+ * hard release-assembly failures -- thrown, never a warning or a silently-dropped relation,
+ * consistent with this file's existing fail-closed precedent. No attempt is made to statically
+ * infer whether the declaring rule and the sibling's own conditions are genuinely disjoint --
+ * that residual risk is exactly what the runtime AmbiguousRuleMatchError backstop in evaluate.ts
+ * exists for, unchanged from today's posture on sufficientConditionGroups (issue #28).
+ */
+function assertNonBlockingSiblingRelationsValid(revisions: RuleRevision[]): void {
+  const gates = revisions.filter(isPathwayGate);
+  const atomicRules = revisions.filter(isAtomicClinicalRule);
+
+  for (const rule of atomicRules) {
+    for (const entry of rule.nonBlockingUnresolvedSiblings ?? []) {
+      const sibling = atomicRules.find(
+        (r) => r.ruleId === entry.siblingRuleId && r.revisionId === entry.siblingRevisionId,
+      );
+      if (!sibling) {
+        throw new UnknownNonBlockingSiblingReferenceError(rule, {
+          siblingRuleId: entry.siblingRuleId,
+          siblingRevisionId: entry.siblingRevisionId,
+        });
+      }
+      const sameSource = sibling.recommendationSourceId === rule.recommendationSourceId;
+      const samePathway =
+        effectiveClinicalPathwayId(sibling, gates) === effectiveClinicalPathwayId(rule, gates);
+      if (!sameSource || !samePathway) {
+        throw new MismatchedNonBlockingSiblingScopeError(rule, sibling);
+      }
+    }
+  }
+}
+
+/**
+ * issue #30 (ADR-0011): a declared nonBlockingUnresolvedSiblings entry targets no Atomic Clinical
+ * Rule revision present in this Release -- a reference to a `ruleId` that exists in the Release
+ * only under a different, stale `revisionId` (superseded, or simply wrong) is treated identically
+ * to a `ruleId` that doesn't exist at all, since a Release contains only the current, Approved
+ * revision of each governed rule file and a reference must name that exact, present revision.
+ */
+export class UnknownNonBlockingSiblingReferenceError extends Error {
+  constructor(
+    public readonly declaringRule: AtomicClinicalRuleRevision,
+    public readonly missing: { siblingRuleId: string; siblingRevisionId: string },
+  ) {
+    super(
+      `Release assembly rejected: ${declaringRule.ruleId}@${declaringRule.revisionId} declares a ` +
+        `nonBlockingUnresolvedSiblings relation targeting ${missing.siblingRuleId}@${missing.siblingRevisionId}, ` +
+        `which is not present as an Atomic Clinical Rule revision in this Release.`,
+    );
+    this.name = "UnknownNonBlockingSiblingReferenceError";
+  }
+}
+
+/**
+ * issue #30 (ADR-0011): a declared nonBlockingUnresolvedSiblings entry targets a real Atomic
+ * Clinical Rule revision present in this Release, but one that does not share the declaring
+ * rule's own recommendationSourceId and effective Clinical Pathway -- a non-blocking relation
+ * between rules for different sources or different pathways is meaningless (source aggregation
+ * per ADR-0010/ADR-0011 is scoped to one source within one matched pathway) and is rejected, not
+ * silently accepted as inert.
+ */
+export class MismatchedNonBlockingSiblingScopeError extends Error {
+  constructor(
+    public readonly declaringRule: AtomicClinicalRuleRevision,
+    public readonly siblingRule: AtomicClinicalRuleRevision,
+  ) {
+    super(
+      `Release assembly rejected: ${declaringRule.ruleId}@${declaringRule.revisionId}'s ` +
+        `nonBlockingUnresolvedSiblings relation targets ${siblingRule.ruleId}@${siblingRule.revisionId}, ` +
+        `which does not share the same Recommendation Source and effective Clinical Pathway.`,
+    );
+    this.name = "MismatchedNonBlockingSiblingScopeError";
+  }
+}
+
 interface NumericRange {
   field: string;
   min: number;
@@ -310,10 +389,13 @@ export function computeReleaseId(revisions: RuleRevision[]): string {
  * explicit approval event, UnknownClinicalPathwayIdError (issue #17) if a bound Atomic Clinical
  * Rule references no Pathway Gate present in the Release, UnboundAtomicRuleInMultiPathwayReleaseError
  * (issue #17) if a Release with more than one Pathway Gate contains any unbound Atomic Clinical
- * Rule, or OverlappingRuleConditionsError (issue #20, rescoped by issue #17 to
+ * Rule, UnknownNonBlockingSiblingReferenceError or MismatchedNonBlockingSiblingScopeError (issue
+ * #30/ADR-0011) if a declared nonBlockingUnresolvedSiblings relation targets a revision absent
+ * from this Release or one outside the declaring rule's own source/pathway scope, or
+ * OverlappingRuleConditionsError (issue #20, rescoped by issue #17 to
  * (effectiveClinicalPathwayId, recommendationSourceId)) if two Approved Atomic Clinical Rules for
  * the same effective pathway and source have deterministically overlapping match conditions —
- * release assembly must physically refuse all five (ADR-0007), never rely on a runtime filter (or
+ * release assembly must physically refuse all seven (ADR-0007), never rely on a runtime filter (or
  * a later non-null assertion) applied after the fact. The approval checks are independent of, and
  * in addition to, ruleRevisionSchema's own approval-event refinement — buildRuleSetRelease
  * enforces every invariant itself rather than trusting that every caller validated with the
@@ -334,6 +416,7 @@ export function buildRuleSetRelease(
   }
 
   assertPathwayBindingsValid(revisions);
+  assertNonBlockingSiblingRelationsValid(revisions);
   assertNoOverlappingAtomicRules(revisions);
 
   return {

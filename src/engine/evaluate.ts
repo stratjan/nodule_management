@@ -37,8 +37,8 @@ import {
   OPERAND_SHADOW_FIELD,
 } from "./types";
 
-export const ENGINE_VERSION = "1.5.0";
-export const SCHEMA_VERSION = "1.5.0";
+export const ENGINE_VERSION = "1.6.0";
+export const SCHEMA_VERSION = "1.6.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -653,11 +653,28 @@ function evaluateSingleAtomicRule(
 }
 
 /**
- * issue #20: evaluate-all-then-classify across every Atomic Clinical Rule for one source. Zero
- * matches with sufficient input -> OUTSIDE_CURRENT_RULESET_SCOPE (unchanged meaning); exactly
- * one match -> today's RECOMMENDATION dispatch, unchanged; more than one match -> throws
- * AmbiguousRuleMatchError rather than guessing. Any rule reporting INSUFFICIENT_INPUT takes
- * precedence, since its own match/no-match status could not even be determined.
+ * issue #20/#30 (ADR-0011): evaluate-all-then-classify across every Atomic Clinical Rule for one
+ * source -- no short-circuit, no first-match/file-order semantics anywhere in this function.
+ *
+ * Step 1 (unconditional, checked first, never suppressed or bypassed by any non-blocking
+ * relation): more than one definite RECOMMENDATION match throws AmbiguousRuleMatchError, exactly
+ * as before issue #30.
+ *
+ * Step 2: with exactly one definite match and one or more unresolved (INSUFFICIENT_INPUT)
+ * siblings, only the matched rule's own declared `nonBlockingUnresolvedSiblings` is consulted --
+ * never the sibling's, never inferred from conditions/thresholds/recommendation content/rule
+ * identity strings/provenance similarity. Unresolved siblings are partitioned into
+ * `toleratedUnresolved` (covered by an exact (ruleId, revisionId) match) and `blockingUnresolved`
+ * (everything else). Zero blocking siblings -> the recommendation is released, annotated with
+ * `toleratedUnresolvedSiblings`. One or more blocking siblings remain -> INSUFFICIENT_INPUT,
+ * whose reason must come only from a genuinely blocking sibling, never a tolerated one --
+ * `blockingUnresolved` is stable-sorted by `(ruleId, revisionId)` before its first element is
+ * read, so the representative is deterministic and independent of array/file/release order.
+ *
+ * Step 3 (unchanged from before issue #30): zero definite matches with any unresolved sibling ->
+ * INSUFFICIENT_INPUT; zero definite matches and zero unresolved siblings -> every rule
+ * individually reported OUTSIDE_CURRENT_RULESET_SCOPE, and any one of them (deterministically,
+ * the first) is the representative final outcome.
  */
 function evaluateAtomicRulesForSource(
   rules: AtomicClinicalRuleRevision[],
@@ -665,17 +682,53 @@ function evaluateAtomicRulesForSource(
 ): SourceEvaluationOutcome {
   const results = rules.map((rule) => evaluateSingleAtomicRule(rule, input));
 
-  const insufficient = results.find((r) => r.outcome.state === "INSUFFICIENT_INPUT");
-  if (insufficient) return insufficient.outcome;
+  const recommended = results.filter((r) => r.outcome.state === "RECOMMENDATION");
 
-  const matched = results.filter((r) => r.outcome.state === "RECOMMENDATION");
-  if (matched.length > 1) {
+  if (recommended.length > 1) {
     throw new AmbiguousRuleMatchError(
       rules[0].recommendationSourceId,
-      matched.map((r) => r.rule),
+      recommended.map((r) => r.rule),
     );
   }
-  if (matched.length === 1) return matched[0].outcome;
+
+  const unresolved = results.filter((r) => r.outcome.state === "INSUFFICIENT_INPUT");
+
+  if (recommended.length === 1) {
+    if (unresolved.length === 0) {
+      return recommended[0].outcome;
+    }
+
+    const matchedRule = recommended[0].rule;
+    const declared = matchedRule.nonBlockingUnresolvedSiblings ?? [];
+    const covers = (siblingRule: AtomicClinicalRuleRevision) =>
+      declared.some(
+        (d) => d.siblingRuleId === siblingRule.ruleId && d.siblingRevisionId === siblingRule.revisionId,
+      );
+
+    const toleratedUnresolved = unresolved.filter((u) => covers(u.rule));
+    const blockingUnresolved = unresolved
+      .filter((u) => !covers(u.rule))
+      .sort((a, b) =>
+        `${a.rule.ruleId}\0${a.rule.revisionId}`.localeCompare(`${b.rule.ruleId}\0${b.rule.revisionId}`),
+      );
+
+    if (blockingUnresolved.length === 0) {
+      return {
+        ...recommended[0].outcome,
+        toleratedUnresolvedSiblings: toleratedUnresolved.map((u) => ({
+          ruleId: u.rule.ruleId,
+          revisionId: u.rule.revisionId,
+        })),
+      };
+    }
+
+    // Deterministic, order-independent: the smallest (ruleId, revisionId) among the genuinely
+    // blocking siblings, never the tolerated ones and never mere array/file/release position.
+    return blockingUnresolved[0].outcome;
+  }
+
+  // Zero definite recommendations.
+  if (unresolved.length > 0) return unresolved[0].outcome;
 
   // Zero matches, none insufficient: every rule individually reported
   // OUTSIDE_CURRENT_RULESET_SCOPE. Any one of them (deterministically, the first) is the

@@ -732,3 +732,173 @@ describe("issue #28/#15 Candidate B1: sufficientConditionGroups schema constrain
     }
   });
 });
+
+// issue #30 (ADR-0011): source-agnostic synthetic fixtures only -- never real S3 B1/B2 content,
+// per the same discipline as the sufficientConditionGroups schema block above. One focused
+// negative test per refine/constraint; a fully-valid parse plus the three-shape/no-leak checks
+// close out the matrix.
+describe("issue #30: nonBlockingUnresolvedSiblings schema constraints", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  const syntheticProvenance = {
+    sourceDocument: "test fixture -- not a real clinical source",
+    version: "n/a",
+    originalLanguage: "English",
+    sourceType: "Synthetic test fixture",
+    locator: "test/engine/schema.test.ts",
+  };
+
+  function conditionShapedRule(overrides: Record<string, unknown> = {}) {
+    return {
+      ruleId: "TEST-NBUS-SCHEMA-RULE",
+      revisionId: "TEST-NBUS-SCHEMA-RULE-r1",
+      kind: "atomic-clinical-rule",
+      recommendationSourceId: "test-only-nbus-schema-source",
+      approvalStatus: "Approved",
+      approvalEvent: { by: "test-fixture", at: "2026-01-01" },
+      provenance: syntheticProvenance,
+      conditions: [{ field: "test_only_field", op: "eq", value: true }],
+      recommendation: {
+        clinicalEndpoint: "test-only-not-a-real-recommendation",
+        intervals: ["n/a"],
+        rationale: "Synthetic fixture for issue #30 schema testing only -- not real clinical content.",
+      },
+      ...overrides,
+    };
+  }
+
+  const validRelation = {
+    siblingRuleId: "TEST-NBUS-SCHEMA-SIBLING",
+    siblingRevisionId: "TEST-NBUS-SCHEMA-SIBLING-r1",
+    provenance: syntheticProvenance,
+  };
+
+  it("1. accepts a valid single relation with full provenance", () => {
+    const raw = conditionShapedRule({ nonBlockingUnresolvedSiblings: [validRelation] });
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("2. rejects a relation missing provenance", () => {
+    const { provenance, ...withoutProvenance } = validRelation;
+    const raw = conditionShapedRule({ nonBlockingUnresolvedSiblings: [withoutProvenance] });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("3a. rejects a relation with an empty siblingRuleId", () => {
+    const raw = conditionShapedRule({
+      nonBlockingUnresolvedSiblings: [{ ...validRelation, siblingRuleId: "" }],
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("3b. rejects a relation with an empty siblingRevisionId", () => {
+    const raw = conditionShapedRule({
+      nonBlockingUnresolvedSiblings: [{ ...validRelation, siblingRevisionId: "" }],
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("4. rejects an unrecognized key on the relation object (.strict())", () => {
+    const raw = conditionShapedRule({
+      nonBlockingUnresolvedSiblings: [{ ...validRelation, priority: 1 }],
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("5. rejects a self-reference (siblingRuleId === the rule's own ruleId)", () => {
+    const raw = conditionShapedRule({
+      nonBlockingUnresolvedSiblings: [
+        { ...validRelation, siblingRuleId: "TEST-NBUS-SCHEMA-RULE" },
+      ],
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("6. rejects two entries with the same (siblingRuleId, siblingRevisionId) pair", () => {
+    const raw = conditionShapedRule({
+      nonBlockingUnresolvedSiblings: [validRelation, { ...validRelation }],
+    });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("7. rejects an empty nonBlockingUnresolvedSiblings array (.min(1))", () => {
+    const raw = conditionShapedRule({ nonBlockingUnresolvedSiblings: [] });
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("8a. accepts the field alongside the clinical-condition shape (conditions)", () => {
+    const raw = conditionShapedRule({ nonBlockingUnresolvedSiblings: [validRelation] });
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("8b. accepts the field alongside the measurement shape (measurementBasis/diameterConditions)", () => {
+    const { conditions, ...base } = conditionShapedRule();
+    const raw = {
+      ...base,
+      measurementBasis: "diameter",
+      diameterConditions: [{ field: "nodule_size_mm", op: "gte", value: 6 }],
+      nonBlockingUnresolvedSiblings: [validRelation],
+    };
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("8c. accepts the field alongside the sufficientConditionGroups shape", () => {
+    const { conditions, provenance, ...base } = conditionShapedRule();
+    const raw = {
+      ...base,
+      provenanceAnchors: [{ role: "test-only-role", provenance: syntheticProvenance }],
+      sufficientConditionGroups: [
+        {
+          groupId: "group-a",
+          conditions: [{ field: "test_only_field_a", op: "eq", value: true }],
+          provenanceRole: "test-only-role",
+        },
+        {
+          groupId: "group-b",
+          conditions: [{ field: "test_only_field_b", op: "gt", value: 100 }],
+          provenanceRole: "test-only-role",
+        },
+      ],
+      nonBlockingUnresolvedSiblings: [validRelation],
+    };
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+
+  it("9a. no accidental availability on a Pathway Gate revision (.strict() rejects the unrecognized key)", () => {
+    const raw = {
+      ruleId: "TEST-NBUS-SCHEMA-GATE",
+      revisionId: "TEST-NBUS-SCHEMA-GATE-r1",
+      kind: "pathway-gate",
+      approvalStatus: "Approved",
+      approvalEvent: { by: "test-fixture", at: "2026-01-01" },
+      provenance: syntheticProvenance,
+      clinicalPathwayId: "incidental-solitary-solid-initial",
+      conditions: [{ field: "test_only_gate_field", op: "eq", value: "yes" }],
+      nonBlockingUnresolvedSiblings: [validRelation],
+    };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("9b. no accidental availability on a Source Applicability revision (.strict() rejects the unrecognized key)", () => {
+    const raw = {
+      ruleId: "TEST-NBUS-SCHEMA-SAR",
+      revisionId: "TEST-NBUS-SCHEMA-SAR-r1",
+      kind: "source-applicability",
+      recommendationSourceId: "test-only-nbus-schema-source",
+      approvalStatus: "Approved",
+      approvalEvent: { by: "test-fixture", at: "2026-01-01" },
+      provenance: syntheticProvenance,
+      conditions: [{ field: "test_only_app_field", op: "eq", value: true }],
+      nonBlockingUnresolvedSiblings: [validRelation],
+    };
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("historical shapes still parse unchanged: every currently-Approved real rule file (none declares nonBlockingUnresolvedSiblings)", () => {
+    for (const relativePath of RULE_FILES) {
+      expect(() => ruleRevisionSchema.parse(loadRaw(relativePath))).not.toThrow();
+    }
+  });
+});
