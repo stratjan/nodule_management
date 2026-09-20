@@ -209,6 +209,20 @@ const sufficientConditionGroupSchema = z
   })
   .strict();
 
+// issue #30 (ADR-0011): a governed, directional relation naming another Atomic Clinical Rule
+// revision whose own unresolved (INSUFFICIENT_INPUT) status does not block THIS rule's match.
+// `.strict()` rejects any unrecognized key, matching every other relation object schema in this
+// file. Cross-field constraints (unique targets, no self-reference) are enforced on the top-level
+// ruleRevisionSchema discriminated union below, mirroring the solidComponentMeasurementConventionId
+// bidirectional-binding refine's own placement style.
+const nonBlockingUnresolvedSiblingSchema = z
+  .object({
+    siblingRuleId: z.string().min(1),
+    siblingRevisionId: z.string().min(1),
+    provenance: provenanceSchema,
+  })
+  .strict();
+
 export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   kind: z.literal("atomic-clinical-rule"),
   recommendationSourceId: z.string().min(1),
@@ -246,6 +260,11 @@ export const atomicClinicalRuleRevisionSchema = ruleRevisionBaseSchema.extend({
   // groupId uniqueness, the provenanceAnchors requirement/cross-reference, and mutual exclusivity
   // with every measurement-only field and with `conditions`.
   sufficientConditionGroups: z.array(sufficientConditionGroupSchema).min(2).optional(),
+  // issue #30 (ADR-0011): optional, additive -- undefined means no relations (today's fully
+  // conservative default, unchanged). `.min(1)` rejects a pointless empty array, mirroring
+  // provenanceAnchors' own `.min(1)`. Not tied to any of the three evaluation shapes above --
+  // valid alongside measurementBasis, conditions, or sufficientConditionGroups alike.
+  nonBlockingUnresolvedSiblings: z.array(nonBlockingUnresolvedSiblingSchema).min(1).optional(),
   recommendation: recommendationContentSchema,
   // issue #20: exactly one of provenance (single, legacy) / provenanceAnchors (multi-anchor) --
   // both optional here, enforced exactly-one-present by the cross-field refine below, following
@@ -424,7 +443,27 @@ export const ruleRevisionSchema = z
     }
     const roles = (rule.provenanceAnchors ?? []).map((a) => a.role);
     return new Set(roles).size === roles.length;
-  }, "provenanceAnchors[].role values must be unique on a sufficientConditionGroups-shaped atomic-clinical-rule");
+  }, "provenanceAnchors[].role values must be unique on a sufficientConditionGroups-shaped atomic-clinical-rule")
+  // issue #30 (ADR-0011): a rule's own nonBlockingUnresolvedSiblings entries must target unique
+  // (siblingRuleId, siblingRevisionId) pairs -- a duplicate target carries no additional meaning
+  // and would silently mask an authoring mistake (e.g. two different intended siblings, one
+  // typo'd to match the other).
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.nonBlockingUnresolvedSiblings === undefined) {
+      return true;
+    }
+    const keys = rule.nonBlockingUnresolvedSiblings.map((s) => `${s.siblingRuleId}\0${s.siblingRevisionId}`);
+    return new Set(keys).size === keys.length;
+  }, "nonBlockingUnresolvedSiblings entries must target unique (siblingRuleId, siblingRevisionId) pairs")
+  // issue #30 (ADR-0011): a rule can never tolerate any revision of itself -- checked on ruleId
+  // alone (not the (ruleId, revisionId) pair), since there is no clinical scenario where a rule's
+  // own past/future revision is a "sibling" whose unresolved status this rule should ignore.
+  .refine((rule) => {
+    if (rule.kind !== "atomic-clinical-rule" || rule.nonBlockingUnresolvedSiblings === undefined) {
+      return true;
+    }
+    return rule.nonBlockingUnresolvedSiblings.every((s) => s.siblingRuleId !== rule.ruleId);
+  }, "nonBlockingUnresolvedSiblings must not self-reference this same rule's own ruleId");
 
 export const ruleSetReleaseSchema = z.object({
   releaseId: z.string().min(1),
