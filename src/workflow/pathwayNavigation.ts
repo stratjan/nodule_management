@@ -19,18 +19,19 @@ export function canContinuePastPathwayStep(input: Partial<ClinicalInputState>): 
 }
 
 /**
- * issue #15 Candidate A0, renamed for Candidate B1 (issue #28): pure decision for App.tsx's
- * handleChange -- whether an edit to one of the four pathway-identity fields should clear every
- * GR-4-follow-up-only field (`s3_volume_stability_criterion_met`, `s3_vdt_days`). Both fields are
+ * issue #15 Candidate A0, renamed for Candidate B1 (issue #28), extended for Candidate C: pure
+ * decision for App.tsx's handleChange -- whether an edit to one of the four pathway-identity
+ * fields should clear every GR-4-follow-up-only field (`s3_volume_stability_criterion_met`,
+ * `s3_vdt_days`, `s3_general_condition_precludes_further_workup_or_therapy`). All three fields are
  * only ever meaningful for the exact solid/incidental/follow-up/solitary pathway shape; any edit
- * that moves one of those four fields away from the value that shape requires invalidates both,
- * so neither must ever silently carry over onto a Clinical Input State it was never given for.
+ * that moves one of those four fields away from the value that shape requires invalidates all
+ * three, so none must ever silently carry over onto a Clinical Input State it was never given for.
  * Extracted as its own pure predicate (mirroring canContinuePastPathwayStep/isNoduleCountOutOfScope
  * above) so this reset rule is unit-testable without a React component harness. Editing any OTHER
  * field (including the S3 applicability facts age/known_malignancy_history/immunocompromised, and
- * the two GR-4 follow-up fields themselves) must never clear either. The predicate itself is
+ * the three GR-4 follow-up fields themselves) must never clear any of them. The predicate itself is
  * field-agnostic -- it only answers "did this edit leave the GR-4 pathway shape?" -- so it governs
- * both fields identically with no duplicated pathway-identity logic anywhere else.
+ * all three fields identically with no duplicated pathway-identity logic anywhere else.
  */
 export function shouldClearGr4FollowUpFields(
   id: string,
@@ -45,11 +46,11 @@ export function shouldClearGr4FollowUpFields(
 }
 
 /**
- * issue #15 Candidate B1: the actual GR-4 follow-up field reset shouldClearGr4FollowUpFields
- * decides, applied to a Clinical Input State -- the one authoritative implementation App.tsx's
- * handleChange calls, so there is no second, separately-maintained copy of "delete both fields"
- * anywhere in the UI layer, and so the full reset (not merely the boolean decision) is
- * unit-testable without a React component harness.
+ * issue #15 Candidate B1, extended for Candidate C: the actual GR-4 follow-up field reset
+ * shouldClearGr4FollowUpFields decides, applied to a Clinical Input State -- the one authoritative
+ * implementation App.tsx's handleChange calls, so there is no second, separately-maintained copy
+ * of "delete all three fields" anywhere in the UI layer, and so the full reset (not merely the
+ * boolean decision) is unit-testable without a React component harness.
  */
 export function applyGr4FollowUpReset(
   next: ClinicalInputState,
@@ -60,5 +61,6 @@ export function applyGr4FollowUpReset(
   const reset = { ...next };
   delete reset.s3_volume_stability_criterion_met;
   delete reset.s3_vdt_days;
+  delete reset.s3_general_condition_precludes_further_workup_or_therapy;
   return reset;
 }

@@ -441,6 +441,14 @@ export interface ClinicalInputState {
    * separately-approved rule could reuse under a different threshold, not a single pre-evaluated
    * criterion. */
   s3_vdt_days?: number;
+  /** issue #15 Candidate C: explicit clinician attestation of S3 Recommendation 6.35's third,
+   * independently sufficient discharge criterion -- the patient's general condition does not
+   * permit further diagnostic clarification or therapy. true = clinician confirms the criterion is
+   * met; false = clinician confirms it is not met; absent = not yet supplied. This is the
+   * consequence for further diagnostic clarification or therapy, not a severity label -- never
+   * derived from ECOG/performance status, age, comorbidity, life expectancy, operability, treatment
+   * candidacy, or any other ClinicalInputState field. */
+  s3_general_condition_precludes_further_workup_or_therapy?: boolean;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---

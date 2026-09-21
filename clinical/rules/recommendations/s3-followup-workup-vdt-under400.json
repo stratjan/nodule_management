@@ -1,6 +1,6 @@
 {
   "ruleId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
-  "revisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+  "revisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "s3",
   "clinicalPathwayId": "incidental-solitary-solid-follow-up",
@@ -32,7 +32,7 @@
   "nonBlockingUnresolvedSiblings": [
     {
       "siblingRuleId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
-      "siblingRevisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
+      "siblingRevisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3",
       "provenance": {
         "sourceDocument": "S3-Leitlinie Prävention, Diagnostik, Therapie und Nachsorge des Lungenkarzinoms",
         "version": "Langversion 4.0, April 2025, AWMF 020-007OL",

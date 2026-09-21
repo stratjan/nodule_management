@@ -409,13 +409,42 @@ describe("Golden Clinical Case G2 (solid follow-up, volume-stability criterion e
   });
 });
 
-describe("Golden Clinical Case G2b (solid follow-up, both S3 discharge criteria explicitly not met) -- issue #15 Candidate B1", () => {
+describe("Golden Clinical Case G2b (solid follow-up, two S3 discharge criteria explicitly not met, general-condition not supplied) -- issue #15 Candidate B1, updated for Candidate C", () => {
   const trace = evaluate(
     { ...followUpBaseInput, s3_volume_stability_criterion_met: false, s3_vdt_days: 600 },
     release,
   );
 
-  it("S3 produces OUTSIDE_CURRENT_RULESET_SCOPE once both groups are definitively false (VDT exactly 600, the strict boundary), never an inferred growth/work-up recommendation", () => {
+  // issue #15 Candidate C: with the third general-condition group now governed, this input --
+  // which fully determined a non-match on the first two groups before Candidate C -- now leaves
+  // the third group INDETERMINATE (s3_general_condition_precludes_further_workup_or_therapy
+  // unsupplied). Per the same Kleene-OR reduction G2 above already exercises, any INDETERMINATE
+  // group, absent any MATCHED, outranks the other two groups' definite NOT_MATCHED. Correctly
+  // INSUFFICIENT_INPUT, not OUTSIDE_CURRENT_RULESET_SCOPE -- the general-condition criterion cannot
+  // yet be ruled out. See G2c below for the fully-determined "all three criteria false" case.
+  it("S3 produces INSUFFICIENT_INPUT -- the general-condition group is still indeterminate, never an inferred growth/work-up recommendation", () => {
+    const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
+    expect(s3?.state).toBe("INSUFFICIENT_INPUT");
+    expect(s3?.recommendation).toBeUndefined();
+  });
+
+  it("Recommendation Set is empty -- no complement-inferred recommendation exists anywhere in this Release", () => {
+    expect(trace.recommendationSet).toHaveLength(0);
+  });
+});
+
+describe("Golden Clinical Case G2c (solid follow-up, all three S3 discharge criteria explicitly not met) -- issue #15 Candidate C", () => {
+  const trace = evaluate(
+    {
+      ...followUpBaseInput,
+      s3_volume_stability_criterion_met: false,
+      s3_vdt_days: 600,
+      s3_general_condition_precludes_further_workup_or_therapy: false,
+    },
+    release,
+  );
+
+  it("S3 produces OUTSIDE_CURRENT_RULESET_SCOPE once all three groups are definitively false (VDT exactly 600, the strict boundary), never an inferred growth/work-up recommendation", () => {
     const s3 = trace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "s3");
     expect(s3?.state).toBe("OUTSIDE_CURRENT_RULESET_SCOPE");
     expect(s3?.recommendation).toBeUndefined();
