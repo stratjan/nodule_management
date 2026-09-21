@@ -24,6 +24,7 @@ const RULE_FILES = [
   "clinical/rules/recommendations/fleischner-partsolid-gte6mm-solidlt6mm.json",
   "clinical/rules/recommendations/fleischner-partsolid-solidgt8mm.json",
   "clinical/rules/recommendations/s3-followup-discharge-volume-or-vdt.json",
+  "clinical/rules/recommendations/s3-followup-workup-vdt-under400.json",
 ];
 
 export function loadApprovedPhase1Revisions(): RuleRevision[] {

@@ -5,7 +5,7 @@
 // source-agnostically in sufficientConditionGroups.test.ts; this file exercises only the real,
 // governed clinical content and its exact boundary.
 import { describe, expect, it } from "vitest";
-import { evaluate } from "../../src/engine/evaluate";
+import { evaluate, AmbiguousRuleMatchError } from "../../src/engine/evaluate";
 import { loadTestRelease } from "../helpers/loadTestRelease";
 import type { ClinicalInputState } from "../../src/engine/types";
 
@@ -91,15 +91,20 @@ describe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1 clinical regression matrix 
     expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["vdt-over-600"]);
   });
 
-  it("volume-stability true, VDT 250 (below B2's own future <400 threshold) -> RECOMMENDATION via volume-stability only; no B2 action is inferred from VDT 250", () => {
-    const trace = evaluate(
-      { ...followUpBaseInput, s3_volume_stability_criterion_met: true, s3_vdt_days: 250 },
-      release,
-    );
-    const s3 = outcomeFor(trace, "s3");
-    expect(s3?.state).toBe("RECOMMENDATION");
-    expect(s3?.recommendation?.matchedSufficientConditionGroupIds).toEqual(["volume-stability"]);
-    expect((s3?.recommendation as any)?.noRoutineFollowUp).toBe(true);
+  // Updated per issue #15 Candidate B2 (post-#30, ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2 /
+  // ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1): this input now falls inside B2's own <400 trigger as
+  // well as B1's volume-stability criterion -- a genuine simultaneous definite match on two
+  // independent Atomic Clinical Rules for the same source, not a case either rule's declared
+  // nonBlockingUnresolvedSiblings relation ever applies to (ADR-0011: AmbiguousRuleMatchError is
+  // checked first and unconditionally, before any relation is consulted). Previously (pre-B2) this
+  // input produced RECOMMENDATION via volume-stability alone, since no VDT<400 rule existed yet.
+  it("volume-stability true, VDT 250 (inside B2's own <400 threshold) -> AmbiguousRuleMatchError, unconditionally, unweakened by either rule's declared non-blocking relation toward the other", () => {
+    const input = {
+      ...followUpBaseInput,
+      s3_volume_stability_criterion_met: true,
+      s3_vdt_days: 250,
+    };
+    expect(() => evaluate(input, release)).toThrow(AmbiguousRuleMatchError);
   });
 
   it("the grouped rule declares provenanceAnchors, not singular provenance, with one anchor per criterion", () => {
