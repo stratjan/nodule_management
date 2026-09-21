@@ -34,11 +34,11 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 15 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor) + issue #26's part-solid solid-component >8mm rule), nothing else, no BTS content", () => {
+  it("includes exactly the 16 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor, now -r2) + issue #26's part-solid solid-component >8mm rule + issue #15/#30's Candidate B2 VDT<400 work-up rule), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(15);
+    expect(release.revisions).toHaveLength(16);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -57,6 +57,7 @@ describe("Rule-Set Release assembly", () => {
       "ACR-FLEISCHNER-PARTSOLID-SOLIDGT8MM",
       "ACR-S3-5TO8MM",
       "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
+      "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
       "GR-1",
       "GR-2",
       "GR-3",
@@ -98,7 +99,7 @@ describe("Rule-Set Release assembly", () => {
   it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, pure-GGN, part-solid, part-solid solid-component >8mm, and follow-up rules across pathways -- including the Rule-1/Candidate-C pair that release-time overlap validation is blind to by field construction, per issue #26)", () => {
     const revisions = loadApprovedPhase1Revisions();
     expect(() => buildRuleSetRelease(revisions)).not.toThrow();
-    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(15);
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(16);
   });
 
   it("issue #15/#28: ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT's sufficientConditionGroups conditions never trigger the overlap guard -- extractNumericRange/rangesOverlap only ever inspect diameterConditions/volumeConditions, both undefined on this rule, so it can never be reported as overlapping with anything (S3 has only one Atomic Clinical Rule per pathway anyway)", () => {
@@ -108,7 +109,11 @@ describe("Rule-Set Release assembly", () => {
       .filter((r) => r.kind === "atomic-clinical-rule" && r.recommendationSourceId === "s3")
       .map((r) => r.ruleId);
     expect(s3RuleIds).toEqual(
-      expect.arrayContaining(["ACR-S3-5TO8MM", "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT"]),
+      expect.arrayContaining([
+        "ACR-S3-5TO8MM",
+        "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
+        "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
+      ]),
     );
   });
 
@@ -275,7 +280,7 @@ describe("issue #30: nonBlockingUnresolvedSiblings release-time validation", () 
     );
   });
 
-  it("does not weaken or otherwise interact with the existing overlap/pathway validation invariants -- the real Approved set builds unaffected (no rule in it declares nonBlockingUnresolvedSiblings)", () => {
+  it("does not weaken or otherwise interact with the existing overlap/pathway validation invariants -- the real Approved set builds successfully, now including issue #15 Candidate B1-r2/B2-r1's own real, mutually-referencing nonBlockingUnresolvedSiblings relations (ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2 <-> ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1, both same source/pathway, validated by assertNonBlockingSiblingRelationsValid exactly as the synthetic cases above prove generically)", () => {
     expect(() => buildRuleSetRelease(loadApprovedPhase1Revisions())).not.toThrow();
   });
 });

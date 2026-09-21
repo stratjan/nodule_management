@@ -1,0 +1,53 @@
+{
+  "ruleId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
+  "revisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "s3",
+  "clinicalPathwayId": "incidental-solitary-solid-follow-up",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-21" },
+  "provenanceAnchors": [
+    {
+      "role": "criterion-vdt-under400",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, standalone sentence immediately following the discharge sentence: radiologically documented size progression of an isolated pulmonary nodule, characterized by VDT <400 days (a single criterion, not a separately-entered progression Boolean plus a numeric threshold -- per binding source reconciliation, issue #15 comment 5748887858), definitive pathological clarification endpoint."
+      }
+    },
+    {
+      "role": "management-pathological-diagnosis-options",
+      "provenance": {
+        "sourceDocument": "S3-Leitlinie Prävention, Diagnostik, Therapie und Nachsorge des Lungenkarzinoms",
+        "version": "Langversion 4.0, April 2025, AWMF 020-007OL",
+        "originalLanguage": "German",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 6.36 (VDT <400-day radiologically documented progression trigger, definitive pathological clarification) and Recommendation 6.37 (procedure options: bronchoscopy with transbronchial biopsy, CT-guided transthoracic biopsy, minimally invasive surgical resection; interdisciplinary selection with pulmonology, radiology, and thoracic surgery) -- 6.37 remains the sole source for the three named actions and the interdisciplinary-selection framing; unchanged from 5697624940."
+      }
+    }
+  ],
+  "conditions": [{ "field": "s3_vdt_days", "op": "lt", "value": 400 }],
+  "nonBlockingUnresolvedSiblings": [
+    {
+      "siblingRuleId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
+      "siblingRevisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
+      "provenance": {
+        "sourceDocument": "S3-Leitlinie Prävention, Diagnostik, Therapie und Nachsorge des Lungenkarzinoms",
+        "version": "Langversion 4.0, April 2025, AWMF 020-007OL",
+        "originalLanguage": "German",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 6.36 -- the <400 radiologically-documented-progression trigger is stated as its own separate condition; s3_volume_stability_criterion_met being absent does not block an otherwise-definite B2 match. Carried forward verbatim from #30 comment 5744887764 §7; not re-derived here."
+      }
+    }
+  ],
+  "recommendation": {
+    "actions": [
+      { "label": "Bronchoscopy with transbronchial biopsy", "timing": { "kind": "not-specified-by-source" } },
+      { "label": "CT-guided transthoracic biopsy", "timing": { "kind": "not-specified-by-source" } },
+      { "label": "Minimally invasive surgical resection", "timing": { "kind": "not-specified-by-source" } }
+    ],
+    "rationale": "S3 states that, in the case of radiologically documented size progression of an isolated pulmonary nodule -- characterized by a volume-doubling time below 400 days -- definitive pathological clarification should be pursued, in a patient >=18 years old with no known malignancy history and not immunocompromised. VDT<400 is the guideline's own quantitative characterization of this progression criterion, not a second, independently required progression finding. The primary S3 guideline names three procedures for this confirmation -- bronchoscopy with transbronchial biopsy, CT-guided transthoracic biopsy, or minimally invasive surgical resection -- presented as coequal alternatives with no source-stated ranking or sequence between them; the source states the choice among them is made interdisciplinarily, involving pulmonology, radiology, and thoracic surgery, and this app does not select a procedure on its own. This branch does not use PET-CT, the Brock/Herder risk models, the >8mm initial-assessment pathway, any additional VDT threshold, or any minimum persistence duration -- none is stated by the source for this criterion. The app does not calculate VDT itself -- it is an explicit clinician entry. A same-source B1 discharge rule (ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT) with unresolved status (s3_volume_stability_criterion_met absent) does not block this match, per the governed directional relation declared above (ADR-0011)."
+  }
+}

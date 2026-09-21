@@ -1,11 +1,11 @@
 {
   "ruleId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
-  "revisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1",
+  "revisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "s3",
   "clinicalPathwayId": "incidental-solitary-solid-follow-up",
   "approvalStatus": "Approved",
-  "approvalEvent": { "by": "stratjan", "at": "2026-09-14" },
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-21" },
   "provenanceAnchors": [
     {
       "role": "criterion-volume-stability",
@@ -38,6 +38,19 @@
       "groupId": "vdt-over-600",
       "conditions": [{ "field": "s3_vdt_days", "op": "gt", "value": 600 }],
       "provenanceRole": "criterion-vdt-over-600"
+    }
+  ],
+  "nonBlockingUnresolvedSiblings": [
+    {
+      "siblingRuleId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
+      "siblingRevisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+      "provenance": {
+        "sourceDocument": "S3-Leitlinie Prävention, Diagnostik, Therapie und Nachsorge des Lungenkarzinoms",
+        "version": "Langversion 4.0, April 2025, AWMF 020-007OL",
+        "originalLanguage": "German",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 6.35 -- B1's own volume-stability/VDT>600 discharge criteria are stated as independently sufficient; s3_vdt_days being absent (or not >600, with volume-stability also absent) does not block an otherwise-definite B1 match on volume-stability alone. Carried forward verbatim from #30 comment 5744887764 §7; not re-derived here."
+      }
     }
   ],
   "recommendation": {
