@@ -1,9 +1,12 @@
-// issue #15 Candidate B1 (architecture: issue #28): exact clinical regression matrix for the
-// governed successor rule ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1 -- two independently
+// issue #15 Candidate B1 (architecture: issue #28; revision bumped to -r2 by issue #15 Candidate
+// B2/#30, ADR-0011 -- see the case-by-case note below): exact clinical regression matrix for the
+// governed successor rule ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2 -- two independently
 // sufficient S3 discharge criteria (volume-stability, VDT>600) inside one sufficientConditionGroups
-// -shaped Atomic Clinical Rule. The generic reduction mechanism itself is proven separately and
-// source-agnostically in sufficientConditionGroups.test.ts; this file exercises only the real,
-// governed clinical content and its exact boundary.
+// -shaped Atomic Clinical Rule. -r1's own conditions, groups, and recommendation content are
+// byte-for-byte unchanged in -r2; only revisionId, approvalEvent, and one new
+// nonBlockingUnresolvedSiblings entry were added. The generic reduction mechanism itself is proven
+// separately and source-agnostically in sufficientConditionGroups.test.ts; this file exercises
+// only the real, governed clinical content and its exact boundary.
 import { describe, expect, it } from "vitest";
 import { evaluate, AmbiguousRuleMatchError } from "../../src/engine/evaluate";
 import { loadTestRelease } from "../helpers/loadTestRelease";
@@ -25,7 +28,7 @@ const followUpBaseInput: ClinicalInputState = {
   immunocompromised: false,
 };
 
-describe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r1 clinical regression matrix (issue #15 Candidate B1)", () => {
+describe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2 clinical regression matrix (issue #15 Candidate B1)", () => {
   it("case 1: volume-stability true, VDT absent -> RECOMMENDATION, matchedSufficientConditionGroupIds = [volume-stability]", () => {
     const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
     const s3 = outcomeFor(trace, "s3");
