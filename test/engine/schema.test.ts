@@ -631,7 +631,8 @@ describe("issue #28/#15 Candidate B1: sufficientConditionGroups schema constrain
 
   it("1. the actual Candidate B1 governed JSON parses successfully (fully valid grouped-rule parse test)", () => {
     const raw = loadRaw(B1_PATH);
-    expect(raw.sufficientConditionGroups.length).toBe(2);
+    // issue #15 Candidate C added a third group (general-condition) to this same governed file.
+    expect(raw.sufficientConditionGroups.length).toBe(3);
     expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
   });
 

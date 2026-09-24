@@ -23,7 +23,11 @@ export interface NumberFieldDef {
 }
 
 export interface BooleanFieldDef {
-  id: "known_malignancy_history" | "immunocompromised" | "s3_volume_stability_criterion_met";
+  id:
+    | "known_malignancy_history"
+    | "immunocompromised"
+    | "s3_volume_stability_criterion_met"
+    | "s3_general_condition_precludes_further_workup_or_therapy";
   label: string;
   type: "boolean";
 }
@@ -73,7 +77,7 @@ export const applicabilityFields: FieldDef[] = [
   { id: "immunocompromised", label: "Immunocompromised", type: "boolean" },
 ];
 
-/** Step 2, solid-follow-up pathway only (issue #15 Candidate A0/B1): the two independently
+/** Step 2, solid-follow-up pathway only (issue #15 Candidate A0/B1/C): the three independently
  * sufficient S3 discharge criteria. Rendered only when the pathway-shaped input is solid/
  * incidental/follow-up/solitary (App.tsx) -- optional here like every other Step-2 field; an
  * unanswered value is itself a valid, intended INSUFFICIENT_INPUT outcome, not a blocked
@@ -89,5 +93,10 @@ export const followUpFields: FieldDef[] = [
     label: "S3 criterion: volume-doubling time (VDT), in days (clinician-entered; not calculated)",
     type: "number",
     min: 0,
+  },
+  {
+    id: "s3_general_condition_precludes_further_workup_or_therapy",
+    label: "S3 criterion confirmed: general condition does not permit further diagnostic work-up or therapy",
+    type: "boolean",
   },
 ];

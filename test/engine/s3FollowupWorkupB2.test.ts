@@ -1,10 +1,13 @@
 // issue #15 Candidate B2, post-#30 final form (final spec: issue #15 comment 5765465799; HITL
-// sign-off: comment 5765473146; source reconciliation: comment 5748887858): exact clinical
-// regression matrix for the governed rule ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 -- a strict
-// VDT<400 trigger recommending definitive pathological confirmation via three coequal,
-// non-ranked, non-sequenced procedures -- authored together with ACR-S3-FOLLOWUP-DISCHARGE-
-// VOLUME-OR-VDT-r2's own reciprocal relation. The generic directional non-blocking
-// unresolved-sibling mechanism itself (ADR-0011) is proven generically and source-agnostically in
+// sign-off: comment 5765473146; source reconciliation: comment 5748887858), revision bumped to
+// -r2 by issue #15 Candidate C (final spec: comment 5767460353; HITL: 5767242759; sign-off:
+// 5767608399) solely to re-point its sibling relation at B1-r3: exact clinical regression matrix
+// for the governed rule ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2 -- a strict VDT<400 trigger
+// recommending definitive pathological confirmation via three coequal, non-ranked, non-sequenced
+// procedures -- authored together with ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3's own reciprocal
+// relation. -r1's clinical trigger, actions, recommendation, rationale, and provenance anchors are
+// byte-for-byte unchanged in -r2. The generic directional non-blocking unresolved-sibling mechanism
+// itself (ADR-0011) is proven generically and source-agnostically in
 // nonBlockingUnresolvedSiblings.test.ts; this file exercises only the real, governed clinical
 // content, its exact boundary, and the two real B1<->B2 relations.
 import { describe, expect, it } from "vitest";
@@ -34,8 +37,8 @@ const EXPECTED_ACTION_LABELS = [
   "Minimally invasive surgical resection",
 ];
 
-describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (issue #15 Candidate B2, post-#30)", () => {
-  it("case 1: s3_vdt_days 399, volume-stability absent -> RECOMMENDATION via B2, B1-r2 tolerated as an unresolved sibling", () => {
+describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2 clinical regression matrix (issue #15 Candidate B2, post-#30, revision-maintenance-only bump for Candidate C)", () => {
+  it("case 1: s3_vdt_days 399, volume-stability absent -> RECOMMENDATION via B2, B1-r3 tolerated as an unresolved sibling", () => {
     const trace = evaluate({ ...followUpBaseInput, s3_vdt_days: 399 }, release);
     const s3 = outcomeFor(trace, "s3");
     expect(s3?.state).toBe("RECOMMENDATION");
@@ -43,12 +46,12 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(s3?.toleratedUnresolvedSiblings).toEqual([
       {
         ruleId: "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
-        revisionId: "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
+        revisionId: "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3",
       },
     ]);
   });
 
-  it("case 2: s3_vdt_days exactly 400 (boundary, not <400), no other criterion supplied -> INSUFFICIENT_INPUT (post-#30 corrected semantics, HITL-approved: B2 self-excludes as OUTSIDE_CURRENT_RULESET_SCOPE, but B1-r2's own internal sufficientConditionGroups reduction is itself unresolved for this input -- vdt-over-600 NOT_MATCHED, volume-stability INDETERMINATE on a missing field -- and with zero definite RECOMMENDATIONs there is no matched rule for any non-blocking relation to be consulted against)", () => {
+  it("case 2: s3_vdt_days exactly 400 (boundary, not <400), no other criterion supplied -> INSUFFICIENT_INPUT (unchanged by Candidate C: B2 self-excludes as OUTSIDE_CURRENT_RULESET_SCOPE, but B1-r3's own internal sufficientConditionGroups reduction is itself unresolved for this input -- vdt-over-600 NOT_MATCHED, volume-stability and general-condition both INDETERMINATE on missing fields -- and with zero definite RECOMMENDATIONs there is no matched rule for any non-blocking relation to be consulted against. Adding a third INDETERMINATE group does not change this boundary: 'any INDETERMINATE, absent any MATCHED, wins over NOT_MATCHED' is agnostic to how many INDETERMINATE groups exist)", () => {
     const trace = evaluate({ ...followUpBaseInput, s3_vdt_days: 400 }, release);
     const s3 = outcomeFor(trace, "s3");
     expect(s3?.state).toBe("INSUFFICIENT_INPUT");
@@ -61,7 +64,7 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(s3?.state).toBe("INSUFFICIENT_INPUT");
   });
 
-  it("case 4: s3_vdt_days 700 (existing B1 case, VDT>600), volume-stability absent -> B1-r2 fires RECOMMENDATION directly (independently sufficient group, no relation needed); B2 definitively does not match (OUTSIDE_CURRENT_RULESET_SCOPE, not unresolved) -- no toleratedUnresolvedSiblings", () => {
+  it("case 4: s3_vdt_days 700 (existing B1 case, VDT>600), volume-stability/general-condition absent -> B1-r3 fires RECOMMENDATION directly (independently sufficient group, no relation needed); B2 definitively does not match (OUTSIDE_CURRENT_RULESET_SCOPE, not unresolved) -- no toleratedUnresolvedSiblings", () => {
     const trace = evaluate({ ...followUpBaseInput, s3_vdt_days: 700 }, release);
     const s3 = outcomeFor(trace, "s3");
     expect(s3?.state).toBe("RECOMMENDATION");
@@ -69,7 +72,7 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(s3?.toleratedUnresolvedSiblings).toBeUndefined();
   });
 
-  it("case 5 (binding B1-tolerated-sibling case): s3_volume_stability_criterion_met true, VDT absent -> B1-r2 RECOMMENDATION via the independently sufficient volume-stability group; B2-r1 tolerated as an unresolved sibling", () => {
+  it("case 5 (binding B1-tolerated-sibling case): s3_volume_stability_criterion_met true, VDT/general-condition absent -> B1-r3 RECOMMENDATION via the independently sufficient volume-stability group; B2-r2 tolerated as an unresolved sibling", () => {
     const trace = evaluate({ ...followUpBaseInput, s3_volume_stability_criterion_met: true }, release);
     const s3 = outcomeFor(trace, "s3");
     expect(s3?.state).toBe("RECOMMENDATION");
@@ -77,7 +80,7 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(s3?.toleratedUnresolvedSiblings).toEqual([
       {
         ruleId: "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
-        revisionId: "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+        revisionId: "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2",
       },
     ]);
   });
@@ -119,6 +122,15 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(() => evaluate(input, release)).toThrow(AmbiguousRuleMatchError);
   });
 
+  it("case 8b (new B1/B2 conflict, issue #15 Candidate C): general-condition true AND VDT 300 supplied together -> evaluate() still throws AmbiguousRuleMatchError, unconditionally; no precedence between discharge and pathological clarification is invented", () => {
+    const input: ClinicalInputState = {
+      ...followUpBaseInput,
+      s3_general_condition_precludes_further_workup_or_therapy: true,
+      s3_vdt_days: 300,
+    };
+    expect(() => evaluate(input, release)).toThrow(AmbiguousRuleMatchError);
+  });
+
   it("case 9a: non-GR-4 pathway state (initial timepoint) with a stray s3_vdt_days does not let B2 fire on the initial pathway", () => {
     const trace = evaluate(
       { ...followUpBaseInput, assessment_timepoint: "initial", s3_vdt_days: 250, nodule_size_mm: 5 },
@@ -150,22 +162,22 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
     expect(s3?.recommendation && "provenance" in s3.recommendation).toBe(false);
   });
 
-  it("both directional relations are declared with distinct, correctly-scoped provenance: B1-r2 -> B2-r1 cites Recommendation 6.35, B2-r1 -> B1-r2 cites Recommendation 6.36", () => {
+  it("both directional relations are declared with distinct, correctly-scoped provenance: B1-r3 -> B2-r2 cites Recommendation 6.35, B2-r2 -> B1-r3 cites Recommendation 6.36", () => {
     const b1 = release.revisions.find(
       (r) => r.ruleId === "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
     ) as any;
     const b2 = release.revisions.find(
       (r) => r.ruleId === "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
     ) as any;
-    expect(b1.revisionId).toBe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2");
-    expect(b2.revisionId).toBe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1");
+    expect(b1.revisionId).toBe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3");
+    expect(b2.revisionId).toBe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2");
 
     expect(b1.nonBlockingUnresolvedSiblings).toHaveLength(1);
     expect(b1.nonBlockingUnresolvedSiblings[0].siblingRuleId).toBe(
       "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
     );
     expect(b1.nonBlockingUnresolvedSiblings[0].siblingRevisionId).toBe(
-      "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+      "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2",
     );
     expect(b1.nonBlockingUnresolvedSiblings[0].provenance.locator).toContain("6.35");
 
@@ -174,7 +186,7 @@ describe("ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1 clinical regression matrix (iss
       "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
     );
     expect(b2.nonBlockingUnresolvedSiblings[0].siblingRevisionId).toBe(
-      "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
+      "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3",
     );
     expect(b2.nonBlockingUnresolvedSiblings[0].provenance.locator).toContain("6.36");
 

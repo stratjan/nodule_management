@@ -1,6 +1,6 @@
 {
   "ruleId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT",
-  "revisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2",
+  "revisionId": "ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3",
   "kind": "atomic-clinical-rule",
   "recommendationSourceId": "s3",
   "clinicalPathwayId": "incidental-solitary-solid-follow-up",
@@ -14,7 +14,7 @@
         "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
         "originalLanguage": "German",
         "sourceType": "Local SOP",
-        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, volume-based discharge-criterion sentence (first of three OR-combined discharge conditions; the third -- general-condition status -- remains explicitly excluded from this slice)"
+        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, volume-based discharge-criterion sentence (first of three OR-combined discharge conditions; the third -- general-condition status -- is now governed separately, role criterion-general-condition, per issue #15 Candidate C)"
       }
     },
     {
@@ -25,6 +25,16 @@
         "originalLanguage": "German",
         "sourceType": "Local SOP",
         "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, VDT-based discharge-criterion sentence (VDT >600 days; second of three OR-combined discharge conditions). Local SOP Tabelle 4's separate >600-day band additionally conditions its own action on stable radiological findings over 2 years -- a durational precondition the S3-Narrativ discharge sentence itself does not state; this table-vs-narrative conflict is recorded as an open Source Quality Finding, deliberately not imported into this rule."
+      }
+    },
+    {
+      "role": "criterion-general-condition",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "S3 narrative, \"Vorgehen - Solide Rundherde\" subsection, the same discharge-criterion sentence as criterion-volume-stability/criterion-vdt-over-600 (third of three OR-combined discharge conditions): the patient's general condition does not permit further diagnostic clarification or therapy. Same sentence, same 'discharged from CT follow-up' endpoint as the other two criteria -- not a distinct clinical concept. No ECOG/performance-status, comorbidity, life-expectancy, operability, or patient-preference decomposition is stated anywhere in this sentence or its surrounding context; none is invented here (HITL, issue #15 comment 5767242759)."
       }
     }
   ],
@@ -38,23 +48,28 @@
       "groupId": "vdt-over-600",
       "conditions": [{ "field": "s3_vdt_days", "op": "gt", "value": 600 }],
       "provenanceRole": "criterion-vdt-over-600"
+    },
+    {
+      "groupId": "general-condition",
+      "conditions": [{ "field": "s3_general_condition_precludes_further_workup_or_therapy", "op": "eq", "value": true }],
+      "provenanceRole": "criterion-general-condition"
     }
   ],
   "nonBlockingUnresolvedSiblings": [
     {
       "siblingRuleId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400",
-      "siblingRevisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1",
+      "siblingRevisionId": "ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2",
       "provenance": {
         "sourceDocument": "S3-Leitlinie Prävention, Diagnostik, Therapie und Nachsorge des Lungenkarzinoms",
         "version": "Langversion 4.0, April 2025, AWMF 020-007OL",
         "originalLanguage": "German",
         "sourceType": "Source Guideline",
-        "locator": "Recommendation 6.35 -- B1's own volume-stability/VDT>600 discharge criteria are stated as independently sufficient; s3_vdt_days being absent (or not >600, with volume-stability also absent) does not block an otherwise-definite B1 match on volume-stability alone. Carried forward verbatim from #30 comment 5744887764 §7; not re-derived here."
+        "locator": "Recommendation 6.35 -- B1's own volume-stability, VDT>600, and general-condition discharge criteria are each stated as independently sufficient; s3_vdt_days being absent (or not >600, with the other two groups also unmatched) does not block an otherwise-definite B1 match on any one sufficient group alone. Extended for issue #15 Candidate C's third group from #30 comment 5744887764 §7's original two-criterion wording; not re-derived as a new relation."
       }
     }
   ],
   "recommendation": {
     "noRoutineFollowUp": true,
-    "rationale": "S3 states that a solitary, solid, incidental pulmonary nodule under CT surveillance may be discharged from further routine follow-up once EITHER its volume increase over approximately one year is below the source's stated 25% threshold, OR its volume-doubling time exceeds 600 days -- two independently sufficient discharge criteria from the same source sentence, in a patient >=18 years old with no known malignancy history and not immunocompromised. A third S3-stated discharge condition (general-condition status precluding further work-up) remains outside this slice. The app does not calculate volume change, elapsed time, or VDT itself -- both are explicit clinician attestations/entries. A Local-SOP table elsewhere additionally conditions a >600-day VDT finding on 2-year radiological stability; that precondition is not part of the S3 narrative's own discharge sentence and is not applied here. Neither criterion being met does not, by itself, imply growth or trigger any work-up recommendation in this Rule-Set Release."
+    "rationale": "S3 states that a solitary, solid, incidental pulmonary nodule under CT surveillance may be discharged from further routine follow-up once EITHER its volume increase over approximately one year is below the source's stated 25% threshold, OR its volume-doubling time exceeds 600 days, OR the patient's general condition does not permit further diagnostic clarification or therapy -- three independently sufficient discharge criteria from the same source sentence, in a patient >=18 years old with no known malignancy history and not immunocompromised. The general-condition criterion is recorded exclusively as an explicit clinician attestation of the S3 criterion itself, never derived from ECOG/performance status, age, comorbidity, life expectancy, operability, treatment candidacy, or any other input -- the source states no such decomposition, and none is invented here. The app does not calculate volume change, elapsed time, or VDT itself -- all three criteria are explicit clinician attestations/entries. A Local-SOP table elsewhere additionally conditions a >600-day VDT finding on 2-year radiological stability; that precondition is not part of the S3 narrative's own discharge sentence and is not applied here. None of the three criteria being met does not, by itself, imply growth or trigger any work-up recommendation in this Rule-Set Release."
   }
 }

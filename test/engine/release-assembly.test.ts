@@ -34,7 +34,7 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 16 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor, now -r2) + issue #26's part-solid solid-component >8mm rule + issue #15/#30's Candidate B2 VDT<400 work-up rule), nothing else, no BTS content", () => {
+  it("includes exactly the 16 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor, now -r3 with Candidate C's general-condition group) + issue #26's part-solid solid-component >8mm rule + issue #15/#30's Candidate B2 VDT<400 work-up rule, now -r2 revision-maintenance-only), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
@@ -280,7 +280,7 @@ describe("issue #30: nonBlockingUnresolvedSiblings release-time validation", () 
     );
   });
 
-  it("does not weaken or otherwise interact with the existing overlap/pathway validation invariants -- the real Approved set builds successfully, now including issue #15 Candidate B1-r2/B2-r1's own real, mutually-referencing nonBlockingUnresolvedSiblings relations (ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r2 <-> ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r1, both same source/pathway, validated by assertNonBlockingSiblingRelationsValid exactly as the synthetic cases above prove generically)", () => {
+  it("does not weaken or otherwise interact with the existing overlap/pathway validation invariants -- the real Approved set builds successfully, now including issue #15 Candidate B1-r3/B2-r2's own real, mutually-referencing nonBlockingUnresolvedSiblings relations (ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3 <-> ACR-S3-FOLLOWUP-WORKUP-VDT-UNDER400-r2, both same source/pathway, validated by assertNonBlockingSiblingRelationsValid exactly as the synthetic cases above prove generically)", () => {
     expect(() => buildRuleSetRelease(loadApprovedPhase1Revisions())).not.toThrow();
   });
 });

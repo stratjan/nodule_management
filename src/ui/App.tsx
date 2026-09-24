@@ -281,11 +281,13 @@ export function App() {
           {showFollowUpCriterionInput && (
             <>
               <p>
-                S3 discharges a followed nodule from routine follow-up when either of two
+                S3 discharges a followed nodule from routine follow-up when any of three
                 independently sufficient criteria is met: volume increase &lt;25% over
-                approximately one year, or a volume-doubling time (VDT) over 600 days. Confirm the
-                volume-stability criterion and/or enter a clinician-determined VDT in days &mdash;
-                the app does not calculate volume change, elapsed time, or VDT itself.
+                approximately one year, a volume-doubling time (VDT) over 600 days, or the
+                patient's general condition not permitting further diagnostic clarification or
+                therapy. Confirm whichever criteria apply and/or enter a clinician-determined VDT
+                in days &mdash; the app does not calculate volume change, elapsed time, or VDT
+                itself, and does not infer general condition from any other field.
               </p>
               <div className="field-grid">
                 {followUpFields.map((field) => (
