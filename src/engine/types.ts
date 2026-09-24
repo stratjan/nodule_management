@@ -447,7 +447,8 @@ export interface ClinicalInputState {
    * met; false = clinician confirms it is not met; absent = not yet supplied. This is the
    * consequence for further diagnostic clarification or therapy, not a severity label -- never
    * derived from ECOG/performance status, age, comorbidity, life expectancy, operability, treatment
-   * candidacy, or any other ClinicalInputState field. */
+   * candidacy, or any other ClinicalInputState field. The source states no such decomposition, and
+   * none is invented here (HITL, issue #15 comment 5767242759). */
   s3_general_condition_precludes_further_workup_or_therapy?: boolean;
 }
 
