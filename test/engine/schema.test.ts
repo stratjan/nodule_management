@@ -31,6 +31,8 @@ const RULE_FILES = [
   "clinical/rules/pathway/gr-4-incidental-solitary-solid-follow-up.json",
   "clinical/rules/recommendations/s3-followup-volume-stable.json",
   "clinical/rules/recommendations/s3-followup-discharge-volume-or-vdt.json",
+  "clinical/rules/pathway/gr-5-incidental-multiple-subsolid-initial.json",
+  "clinical/rules/recommendations/fleischner-multiple-subsolid-initial.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -570,6 +572,38 @@ describe("issue #15 Candidate A0: clinical-condition-shaped Atomic Clinical Rule
     const raw = loadRaw(DUAL_MEASUREMENT_RULE_PATH);
     expect(raw.conditions).toBeUndefined();
     expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+  });
+});
+
+describe("issue #16 Candidate A: GR-5 and ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL schema", () => {
+  function loadRaw(relativePath: string): any {
+    return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf-8"));
+  }
+
+  it("GR-5-r1 parses as a pathway gate on the new closed-enum pathway id", () => {
+    const raw = loadRaw("clinical/rules/pathway/gr-5-incidental-multiple-subsolid-initial.json");
+    const parsed = ruleRevisionSchema.parse(raw);
+    expect(parsed.kind).toBe("pathway-gate");
+    expect((parsed as any).clinicalPathwayId).toBe("incidental-multiple-subsolid-initial");
+  });
+
+  it("the pathway id is still a closed vocabulary -- an unknown id is rejected", () => {
+    const raw = loadRaw("clinical/rules/pathway/gr-5-incidental-multiple-subsolid-initial.json");
+    raw.clinicalPathwayId = "incidental-multiple-solid-initial";
+    expect(() => ruleRevisionSchema.parse(raw)).toThrow();
+  });
+
+  it("the ACR parses as a sufficientConditionGroups-shaped rule with exactly the two approved groups and three anchors with unique roles", () => {
+    const raw = loadRaw("clinical/rules/recommendations/fleischner-multiple-subsolid-initial.json");
+    expect(() => ruleRevisionSchema.parse(raw)).not.toThrow();
+    expect(raw.sufficientConditionGroups.map((g: any) => g.groupId)).toEqual([
+      "all-subsolid-lt-6mm",
+      "any-subsolid-gte-6mm",
+    ]);
+    const roles = raw.provenanceAnchors.map((a: any) => a.role);
+    expect(roles).toHaveLength(3);
+    expect(new Set(roles).size).toBe(3);
+    expect(roles).toEqual(["criterion-all-subsolid-lt-6mm", "criterion-any-subsolid-gte-6mm", "local-management"]);
   });
 });
 

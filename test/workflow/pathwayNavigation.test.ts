@@ -3,14 +3,26 @@
 // one discrete nodule, I want the tool to tell me this pathway is scoped to a solitary nodule
 // and stop there"). The engine's Clinical Pathway Gate remains the actual clinical authority;
 // this only governs UI navigation.
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   applyGr4FollowUpReset,
+  applyNoduleCountBranchReset,
   canContinuePastPathwayStep,
-  isNoduleCountOutOfScope,
+  isMultipleSubsolidShape,
+  pathwayStepOutOfScopeReason,
   shouldClearGr4FollowUpFields,
 } from "../../src/workflow/pathwayNavigation";
+import {
+  FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT,
+  multipleSubsolidFleischnerFields,
+  multipleSubsolidPathwayFields,
+} from "../../src/workflow/fields";
 import type { ClinicalInputState } from "../../src/engine/types";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const completePathway: ClinicalInputState = {
   nodule_morphology: "solid",
@@ -24,7 +36,7 @@ describe("canContinuePastPathwayStep", () => {
     expect(canContinuePastPathwayStep(completePathway)).toBe(true);
   });
 
-  it("blocks continuing when nodule_count > 1, even though all fields are answered", () => {
+  it("blocks continuing when nodule_count > 1 with only the solitary fields answered (issue #16 Candidate A: the multiple branch needs its own set-level facts instead of morphology)", () => {
     expect(canContinuePastPathwayStep({ ...completePathway, nodule_count: 2 })).toBe(false);
   });
 
@@ -199,16 +211,286 @@ describe("applyGr4FollowUpReset (issue #15 Candidate B1, extended for Candidate 
   });
 });
 
-describe("isNoduleCountOutOfScope", () => {
-  it("is false when nodule_count is unanswered", () => {
-    expect(isNoduleCountOutOfScope({})).toBe(false);
+// issue #16 Candidate A (final spec comment 5858670823 §8/§9, acceptance cases 24-28).
+const validMultipleSubsolid: ClinicalInputState = {
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 3,
+  multiple_nodules_all_subsolid: true,
+  multiple_nodules_discrete_circumscribed: true,
+};
+
+describe("pathwayStepOutOfScopeReason (issue #16 Candidate A, replaces isNoduleCountOutOfScope)", () => {
+  it("is null when nodule_count is unanswered", () => {
+    expect(pathwayStepOutOfScopeReason({})).toBeNull();
   });
 
-  it("is false when nodule_count = 1", () => {
-    expect(isNoduleCountOutOfScope({ nodule_count: 1 })).toBe(false);
+  it("is null for the solitary branch (nodule_count = 1), even with follow-up timepoint -- solitary navigation is unchanged", () => {
+    expect(pathwayStepOutOfScopeReason({ nodule_count: 1 })).toBeNull();
+    expect(pathwayStepOutOfScopeReason({ ...completePathway, assessment_timepoint: "follow-up" })).toBeNull();
   });
 
-  it("is true when nodule_count > 1", () => {
-    expect(isNoduleCountOutOfScope({ nodule_count: 2 })).toBe(true);
+  it("case 28: a valid Candidate-A state has no out-of-scope reason (no notice shown)", () => {
+    expect(pathwayStepOutOfScopeReason(validMultipleSubsolid)).toBeNull();
+  });
+
+  it("case 28: a multiple count with nothing else answered yet has no out-of-scope reason", () => {
+    expect(pathwayStepOutOfScopeReason({ nodule_count: 2 })).toBeNull();
+  });
+
+  it("case 28: follow-up timepoint with multiple nodules -> multiple-follow-up", () => {
+    expect(
+      pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, assessment_timepoint: "follow-up" }),
+    ).toBe("multiple-follow-up");
+  });
+
+  it("case 28: a set containing a fully solid nodule (F2 false) -> multiple-contains-solid", () => {
+    expect(
+      pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, multiple_nodules_all_subsolid: false }),
+    ).toBe("multiple-contains-solid");
+  });
+
+  it("case 28: a disseminated presentation (F3 false) -> multiple-disseminated", () => {
+    expect(
+      pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, multiple_nodules_discrete_circumscribed: false }),
+    ).toBe("multiple-disseminated");
+  });
+});
+
+describe("canContinuePastPathwayStep: multiple-nodule branch (issue #16 Candidate A)", () => {
+  it("case 27: a valid GR-5 shape can continue with no nodule_morphology and no measurement", () => {
+    expect(validMultipleSubsolid.nodule_morphology).toBeUndefined();
+    expect(canContinuePastPathwayStep(validMultipleSubsolid)).toBe(true);
+  });
+
+  it("blocks continuing while either set-level fact is unanswered", () => {
+    const { multiple_nodules_all_subsolid, ...noF2 } = validMultipleSubsolid;
+    const { multiple_nodules_discrete_circumscribed, ...noF3 } = validMultipleSubsolid;
+    expect(canContinuePastPathwayStep(noF2)).toBe(false);
+    expect(canContinuePastPathwayStep(noF3)).toBe(false);
+  });
+
+  it("blocks continuing while context or timepoint is unanswered", () => {
+    const { assessment_context, ...noContext } = validMultipleSubsolid;
+    const { assessment_timepoint, ...noTimepoint } = validMultipleSubsolid;
+    expect(canContinuePastPathwayStep(noContext)).toBe(false);
+    expect(canContinuePastPathwayStep(noTimepoint)).toBe(false);
+  });
+
+  it("blocks continuing for every out-of-scope reason", () => {
+    expect(canContinuePastPathwayStep({ ...validMultipleSubsolid, assessment_timepoint: "follow-up" })).toBe(false);
+    expect(canContinuePastPathwayStep({ ...validMultipleSubsolid, multiple_nodules_all_subsolid: false })).toBe(false);
+    expect(
+      canContinuePastPathwayStep({ ...validMultipleSubsolid, multiple_nodules_discrete_circumscribed: false }),
+    ).toBe(false);
+  });
+
+  it("blocks continuing for a nodule_count that is neither 1 nor a whole number >= 2", () => {
+    expect(canContinuePastPathwayStep({ ...validMultipleSubsolid, nodule_count: 0 })).toBe(false);
+    expect(canContinuePastPathwayStep({ ...validMultipleSubsolid, nodule_count: 2.5 })).toBe(false);
+  });
+});
+
+describe("isMultipleSubsolidShape (issue #16 Candidate A)", () => {
+  it("case 27: true for the GR-5 shape with no diameter/volume -- the term that makes App.tsx's canEvaluate true without a measurement", () => {
+    expect(validMultipleSubsolid.nodule_size_mm).toBeUndefined();
+    expect(validMultipleSubsolid.nodule_volume_mm3).toBeUndefined();
+    expect(isMultipleSubsolidShape(validMultipleSubsolid)).toBe(true);
+    expect(isMultipleSubsolidShape({ ...validMultipleSubsolid, nodule_count: 2 })).toBe(true);
+  });
+
+  it("false whenever any GR-5 condition is not met", () => {
+    expect(isMultipleSubsolidShape({ ...validMultipleSubsolid, nodule_count: 1 })).toBe(false);
+    expect(isMultipleSubsolidShape({ ...validMultipleSubsolid, assessment_timepoint: "follow-up" })).toBe(false);
+    expect(isMultipleSubsolidShape({ ...validMultipleSubsolid, assessment_context: "screening" })).toBe(false);
+    expect(isMultipleSubsolidShape({ ...validMultipleSubsolid, multiple_nodules_all_subsolid: false })).toBe(false);
+    expect(
+      isMultipleSubsolidShape({ ...validMultipleSubsolid, multiple_nodules_discrete_circumscribed: false }),
+    ).toBe(false);
+    const { multiple_nodules_all_subsolid, ...noF2 } = validMultipleSubsolid;
+    expect(isMultipleSubsolidShape(noF2)).toBe(false);
+  });
+});
+
+describe("applyNoduleCountBranchReset (issue #16 Candidate A, final spec §9)", () => {
+  // Mirrors App.tsx's handleChange exactly: set the edited value, then apply both resets.
+  function edit(prev: ClinicalInputState, id: string, value: string | number | boolean | undefined) {
+    const next: ClinicalInputState = { ...prev, [id]: value };
+    return applyNoduleCountBranchReset(applyGr4FollowUpReset(next, id, value), id, value);
+  }
+
+  const solitaryWithEverything: ClinicalInputState = {
+    nodule_morphology: "solid",
+    assessment_context: "incidental",
+    assessment_timepoint: "follow-up",
+    nodule_count: 1,
+    nodule_size_mm: 7,
+    nodule_volume_mm3: 180,
+    nodule_diameter_measurements: [{ valueMm: 7, conventionId: "fleischner-2017-average-diameter" }],
+    solid_component_diameter_measurements: [
+      { valueMm: 4, conventionId: "fleischner-2017-solid-component-long-axis" },
+    ],
+    s3_volume_stability_criterion_met: true,
+    s3_vdt_days: 700,
+    s3_general_condition_precludes_further_workup_or_therapy: true,
+    age: 55,
+    known_malignancy_history: false,
+    immunocompromised: false,
+  };
+
+  const multipleWithEverything: ClinicalInputState = {
+    ...validMultipleSubsolid,
+    fleischner_multiple_subsolid_any_gte_6mm: true,
+    age: 55,
+    known_malignancy_history: false,
+    immunocompromised: false,
+  };
+
+  it("case 24: count 1 -> 3 clears morphology, diameter, volume, both measurement arrays, and all GR-4 follow-up fields; applicability kept", () => {
+    const result = edit(solitaryWithEverything, "nodule_count", 3);
+    expect(result.nodule_count).toBe(3);
+    expect(result.nodule_morphology).toBeUndefined();
+    expect(result.nodule_size_mm).toBeUndefined();
+    expect(result.nodule_volume_mm3).toBeUndefined();
+    expect(result.nodule_diameter_measurements).toBeUndefined();
+    expect(result.solid_component_diameter_measurements).toBeUndefined();
+    expect(result.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(result.s3_vdt_days).toBeUndefined();
+    expect(result.s3_general_condition_precludes_further_workup_or_therapy).toBeUndefined();
+    expect(result.age).toBe(55);
+    expect(result.known_malignancy_history).toBe(false);
+    expect(result.immunocompromised).toBe(false);
+  });
+
+  it("case 25: count 3 -> 1 clears F2, F3, F4; applicability kept", () => {
+    const result = edit(multipleWithEverything, "nodule_count", 1);
+    expect(result.multiple_nodules_all_subsolid).toBeUndefined();
+    expect(result.multiple_nodules_discrete_circumscribed).toBeUndefined();
+    expect(result.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    expect(result.age).toBe(55);
+  });
+
+  it("clearing nodule_count leaves both branches: solitary and multiple fields are all cleared", () => {
+    const fromMultiple = edit(multipleWithEverything, "nodule_count", undefined);
+    expect(fromMultiple.multiple_nodules_all_subsolid).toBeUndefined();
+    expect(fromMultiple.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    const fromSolitary = edit(solitaryWithEverything, "nodule_count", undefined);
+    expect(fromSolitary.nodule_morphology).toBeUndefined();
+    expect(fromSolitary.nodule_size_mm).toBeUndefined();
+  });
+
+  it("case 26: 1 -> 3 -> 1 never resurrects a solitary field", () => {
+    const toMultiple = edit(solitaryWithEverything, "nodule_count", 3);
+    const backToSolitary = edit(toMultiple, "nodule_count", 1);
+    expect(backToSolitary.nodule_morphology).toBeUndefined();
+    expect(backToSolitary.nodule_size_mm).toBeUndefined();
+    expect(backToSolitary.nodule_volume_mm3).toBeUndefined();
+    expect(backToSolitary.nodule_diameter_measurements).toBeUndefined();
+    expect(backToSolitary.solid_component_diameter_measurements).toBeUndefined();
+    expect(backToSolitary.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(backToSolitary.s3_vdt_days).toBeUndefined();
+    expect(backToSolitary.s3_general_condition_precludes_further_workup_or_therapy).toBeUndefined();
+  });
+
+  it("case 26: 3 -> 1 -> 3 never resurrects a multiple-subsolid field", () => {
+    const toSolitary = edit(multipleWithEverything, "nodule_count", 1);
+    const backToMultiple = edit(toSolitary, "nodule_count", 3);
+    expect(backToMultiple.multiple_nodules_all_subsolid).toBeUndefined();
+    expect(backToMultiple.multiple_nodules_discrete_circumscribed).toBeUndefined();
+    expect(backToMultiple.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+  });
+
+  it("case 26b: count 3 -> 4 clears nothing", () => {
+    expect(edit(multipleWithEverything, "nodule_count", 4)).toEqual({ ...multipleWithEverything, nodule_count: 4 });
+  });
+
+  it("case 26b: editing F4 itself clears nothing", () => {
+    expect(edit(multipleWithEverything, "fleischner_multiple_subsolid_any_gte_6mm", false)).toEqual({
+      ...multipleWithEverything,
+      fleischner_multiple_subsolid_any_gte_6mm: false,
+    });
+  });
+
+  it("case 26b: editing F2/F3 to true clears nothing", () => {
+    expect(edit(multipleWithEverything, "multiple_nodules_all_subsolid", true)).toEqual(multipleWithEverything);
+    expect(edit(multipleWithEverything, "multiple_nodules_discrete_circumscribed", true)).toEqual(
+      multipleWithEverything,
+    );
+  });
+
+  it("case 26b: editing an applicability fact clears nothing", () => {
+    expect(edit(multipleWithEverything, "age", 70)).toEqual({ ...multipleWithEverything, age: 70 });
+    expect(edit(multipleWithEverything, "immunocompromised", true)).toEqual({
+      ...multipleWithEverything,
+      immunocompromised: true,
+    });
+  });
+
+  it("case 26c: timepoint -> follow-up clears F4 only; F2/F3 retained", () => {
+    const result = edit(multipleWithEverything, "assessment_timepoint", "follow-up");
+    expect(result.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    expect(result.multiple_nodules_all_subsolid).toBe(true);
+    expect(result.multiple_nodules_discrete_circumscribed).toBe(true);
+  });
+
+  it("case 26c: context changed away from incidental clears F4 only; F2/F3 retained", () => {
+    const result = edit(multipleWithEverything, "assessment_context", "screening");
+    expect(result.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    expect(result.multiple_nodules_all_subsolid).toBe(true);
+    expect(result.multiple_nodules_discrete_circumscribed).toBe(true);
+  });
+
+  it("case 26c: F2 -> false clears F4; F2 (now false) and F3 retained", () => {
+    const result = edit(multipleWithEverything, "multiple_nodules_all_subsolid", false);
+    expect(result.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    expect(result.multiple_nodules_all_subsolid).toBe(false);
+    expect(result.multiple_nodules_discrete_circumscribed).toBe(true);
+  });
+
+  it("case 26c: F3 -> false clears F4; F2 and F3 (now false) retained", () => {
+    const result = edit(multipleWithEverything, "multiple_nodules_discrete_circumscribed", false);
+    expect(result.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+    expect(result.multiple_nodules_all_subsolid).toBe(true);
+    expect(result.multiple_nodules_discrete_circumscribed).toBe(false);
+  });
+
+  it("an F4 cleared by leaving the GR-5 shape is not resurrected on re-entry", () => {
+    const left = edit(multipleWithEverything, "assessment_timepoint", "follow-up");
+    const back = edit(left, "assessment_timepoint", "initial");
+    expect(back.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+  });
+});
+
+describe("F4 clinician-facing wording (issue #16 implementation-readiness sign-off 5858952610 §4)", () => {
+  it("the F4 help text states the binding Fleischner whole-nodule measurement convention verbatim", () => {
+    expect(FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT).toBe(
+      "When determining whether any subsolid nodule is 6 mm or larger, use the established Fleischner whole-nodule diameter convention: average the long- and short-axis diameters and round to the nearest whole millimeter.",
+    );
+  });
+
+  it("App.tsx renders the F4 help text in the multiple-subsolid step-2 block", () => {
+    const appSource = readFileSync(join(__dirname, "../../src/ui/App.tsx"), "utf-8");
+    expect(appSource).toContain("{FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT}");
+  });
+
+  it("the F4 field keeps its approved label and stays a single set-level boolean (no measurement field introduced)", () => {
+    expect(multipleSubsolidFleischnerFields).toEqual([
+      {
+        id: "fleischner_multiple_subsolid_any_gte_6mm",
+        label:
+          "Fleischner: at least one subsolid nodule measures 6 mm or larger (Yes = at least one ≥6 mm; No = all <6 mm)",
+        type: "boolean",
+      },
+    ]);
+  });
+
+  it("the F2/F3 fields keep their approved labels", () => {
+    expect(multipleSubsolidPathwayFields.map((f) => [f.id, f.label])).toEqual([
+      ["multiple_nodules_all_subsolid", "All nodules are subsolid (pure ground-glass and/or part-solid); none is fully solid"],
+      [
+        "multiple_nodules_discrete_circumscribed",
+        "Nodules are discrete/circumscribed (not a disseminated, diffuse, miliary, or metastatic-pattern presentation)",
+      ],
+    ]);
   });
 });

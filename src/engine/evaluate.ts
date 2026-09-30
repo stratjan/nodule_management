@@ -37,8 +37,8 @@ import {
   OPERAND_SHADOW_FIELD,
 } from "./types";
 
-export const ENGINE_VERSION = "1.6.0";
-export const SCHEMA_VERSION = "1.6.0";
+export const ENGINE_VERSION = "1.7.0";
+export const SCHEMA_VERSION = "1.7.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State

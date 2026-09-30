@@ -27,14 +27,20 @@ export interface BooleanFieldDef {
     | "known_malignancy_history"
     | "immunocompromised"
     | "s3_volume_stability_criterion_met"
-    | "s3_general_condition_precludes_further_workup_or_therapy";
+    | "s3_general_condition_precludes_further_workup_or_therapy"
+    | "multiple_nodules_all_subsolid"
+    | "multiple_nodules_discrete_circumscribed"
+    | "fleischner_multiple_subsolid_any_gte_6mm";
   label: string;
   type: "boolean";
 }
 
 export type FieldDef = SelectFieldDef | NumberFieldDef | BooleanFieldDef;
 
-/** Step 1: pathway-identity fields. All four required -- any omission blocks evaluation entirely. */
+/** Step 1: solitary-branch pathway-identity fields. All four required for nodule_count = 1 -- any
+ * omission blocks evaluation entirely. The multiple-nodule branch (issue #16 Candidate A) asks
+ * assessment_context/assessment_timepoint/nodule_count plus multipleSubsolidPathwayFields instead,
+ * never nodule_morphology. */
 export const pathwayFields: FieldDef[] = [
   {
     id: "nodule_morphology",
@@ -100,3 +106,41 @@ export const followUpFields: FieldDef[] = [
     type: "boolean",
   },
 ];
+
+/** Step 1, multiple-nodule branch only (issue #16 Candidate A): the two source-neutral, set-level
+ * pathway-identity facts GR-5 gates on. Rendered only when nodule_count >= 2 (App.tsx), in place
+ * of nodule_morphology -- the solitary morphology field is never reused to describe a multiple
+ * set. */
+export const multipleSubsolidPathwayFields: FieldDef[] = [
+  {
+    id: "multiple_nodules_all_subsolid",
+    label: "All nodules are subsolid (pure ground-glass and/or part-solid); none is fully solid",
+    type: "boolean",
+  },
+  {
+    id: "multiple_nodules_discrete_circumscribed",
+    label:
+      "Nodules are discrete/circumscribed (not a disseminated, diffuse, miliary, or metastatic-pattern presentation)",
+    type: "boolean",
+  },
+];
+
+/** Step 2, GR-5 shape only (issue #16 Candidate A): the Fleischner-specific, set-level size-state
+ * attestation. Optional like every other Step-2 field -- an unanswered value is itself a valid,
+ * intended Fleischner INSUFFICIENT_INPUT outcome, not a blocked evaluation. */
+export const multipleSubsolidFleischnerFields: FieldDef[] = [
+  {
+    id: "fleischner_multiple_subsolid_any_gte_6mm",
+    label:
+      "Fleischner: at least one subsolid nodule measures 6 mm or larger (Yes = at least one ≥6 mm; No = all <6 mm)",
+    type: "boolean",
+  },
+];
+
+/** issue #16 Candidate A implementation-readiness sign-off (comment 5858952610 §4), binding
+ * wording: the already-established Fleischner whole-nodule measurement convention, made explicit
+ * where the clinician applies the 6 mm threshold to fleischner_multiple_subsolid_any_gte_6mm.
+ * Wording only -- no measurement field, per-lesion storage, or engine-side measurement logic
+ * follows from it; the fact itself stays a clinician-attested set-level criterion. */
+export const FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT =
+  "When determining whether any subsolid nodule is 6 mm or larger, use the established Fleischner whole-nodule diameter convention: average the long- and short-axis diameters and round to the nearest whole millimeter.";
