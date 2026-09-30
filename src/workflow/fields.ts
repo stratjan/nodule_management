@@ -3,7 +3,7 @@
 // them. All actual evaluation happens in src/engine.
 
 export interface SelectFieldDef {
-  id: "nodule_morphology" | "assessment_context" | "assessment_timepoint";
+  id: "nodule_morphology" | "assessment_context" | "assessment_timepoint" | "fleischner_multiple_solid_risk_category";
   label: string;
   type: "select";
   options: { value: string; label: string }[];
@@ -30,7 +30,9 @@ export interface BooleanFieldDef {
     | "s3_general_condition_precludes_further_workup_or_therapy"
     | "multiple_nodules_all_subsolid"
     | "multiple_nodules_discrete_circumscribed"
-    | "fleischner_multiple_subsolid_any_gte_6mm";
+    | "fleischner_multiple_subsolid_any_gte_6mm"
+    | "multiple_nodules_all_solid"
+    | "fleischner_multiple_solid_all_lt_6mm";
   label: string;
   type: "boolean";
 }
@@ -144,3 +146,45 @@ export const multipleSubsolidFleischnerFields: FieldDef[] = [
  * follows from it; the fact itself stays a clinician-attested set-level criterion. */
 export const FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT =
   "When determining whether any subsolid nodule is 6 mm or larger, use the established Fleischner whole-nodule diameter convention: average the long- and short-axis diameters and round to the nearest whole millimeter.";
+
+
+/** issue #16 Candidate B: source-neutral multiple-solid set membership. */
+export const multipleSolidSetField: FieldDef = {
+  id: "multiple_nodules_all_solid",
+  label: "All nodules are solid; none is pure ground-glass or part-solid",
+  type: "boolean",
+};
+
+export const multipleSolidSizeField: FieldDef = {
+  id: "fleischner_multiple_solid_all_lt_6mm",
+  label: "Fleischner: all solid nodules measure less than 6 mm (Yes = all <6 mm; No = at least one ≥6 mm)",
+  type: "boolean",
+};
+
+export const multipleSolidFleischnerRiskFields: FieldDef[] = [
+  {
+    id: "fleischner_multiple_solid_risk_category",
+    label: "Fleischner risk category — your clinical decision",
+    type: "select",
+    options: [
+      { value: "low", label: "Low risk" },
+      { value: "high", label: "High risk" },
+    ],
+  },
+];
+
+export const FLEISCHNER_MULTIPLE_SOLID_MEASUREMENT_HELP_TEXT =
+  "When determining whether all solid nodules are smaller than 6 mm, use the established Fleischner whole-nodule diameter convention: average the long- and short-axis diameters and round to the nearest whole millimeter.";
+
+export const FLEISCHNER_MULTIPLE_SOLID_RISK_DECISION_SUPPORT = {
+  heading: "Fleischner risk context — decision support only (not scored)",
+  items: [
+    "Fleischner 2017 defines low risk as an estimated lung-cancer risk below 5%, and high risk as the combined intermediate-risk (5–65%) and high-risk (>65%) categories of the American College of Chest Physicians.",
+    "Factors the guideline describes as relevant to this estimate include: age; smoking exposure; nodule size; nodule margins (for example irregular or spiculated); upper-lobe location.",
+    "The guideline gives no scoring rule for these factors. This app does not calculate a score, weight any factor, or derive low or high risk from them; no single factor or combination determines the category here.",
+    "The risk category you select is your clinical decision.",
+  ],
+} as const;
+
+export const FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE =
+  "Fleischner notes that this pathway may not apply unchanged when there is a known or suspected primary neoplasm that could be a source of metastatic disease, or when there is clinical evidence of active infection; those contexts may require different individualized management.";

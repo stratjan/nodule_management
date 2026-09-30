@@ -58,7 +58,8 @@ export type ClinicalPathwayId =
   | "incidental-solitary-pure-ggn-initial"
   | "incidental-solitary-part-solid-initial"
   | "incidental-solitary-solid-follow-up"
-  | "incidental-multiple-subsolid-initial";
+  | "incidental-multiple-subsolid-initial"
+  | "incidental-multiple-solid-lt-6mm-initial";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -185,7 +186,7 @@ export interface StructuredRecommendationContent {
 
 /**
  * Exactly one canonical representation per Rule Revision -- legacy XOR structured XOR
- * no-routine-follow-up XOR persistence-surveillance (the latter two added by issue #17), never
+ * no-routine-follow-up XOR persistence-surveillance XOR consider-action, never
  * more than one. Distinguished structurally (by which keys are present), not by a tag field, so
  * the unmodified Phase-1 legacy shape needs no edit to keep validating.
  */
@@ -193,7 +194,8 @@ export type RecommendationContent =
   | LegacyRecommendationContent
   | StructuredRecommendationContent
   | NoRoutineFollowUpRecommendationContent
-  | PersistenceSurveillanceRecommendationContent;
+  | PersistenceSurveillanceRecommendationContent
+  | ConsiderActionRecommendationContent;
 
 /**
  * issue #17: a positive, closed semantic marker for "the source states a management decision of
@@ -230,6 +232,19 @@ export interface PersistenceSurveillanceRecommendationContent {
   rationale: string;
 }
 
+/** issue #16 Candidate B: exactly one source-stated action whose performance is optional while
+ * its timing remains explicitly specified. */
+export interface ConsiderAction {
+  label: string;
+  timing: { kind: "specified"; intervals: string[] };
+}
+
+/** issue #16 Candidate B / #37: closed sibling form for a single "may be considered" action. */
+export interface ConsiderActionRecommendationContent {
+  considerAction: ConsiderAction;
+  rationale: string;
+}
+
 export function isStructuredRecommendation(
   content: RecommendationContent,
 ): content is StructuredRecommendationContent {
@@ -246,6 +261,12 @@ export function isPersistenceSurveillanceRecommendation(
   content: RecommendationContent,
 ): content is PersistenceSurveillanceRecommendationContent {
   return "persistenceConfirmation" in content;
+}
+
+export function isConsiderActionRecommendation(
+  content: RecommendationContent,
+): content is ConsiderActionRecommendationContent {
+  return "considerAction" in content;
 }
 
 export interface ProvenanceAnchor {
@@ -404,6 +425,10 @@ export interface ActiveRuleSetPointer {
 
 // --- Clinical Input State (ADR-0002: transient wizard input, never a patient record) ---
 
+/** issue #16 Candidate B: clinician-selected Fleischner risk category for the bounded multiple-
+ * solid <6 mm pathway. Closed and source-specific; never scored, weighted, computed, or inferred. */
+export type FleischnerRiskCategory = "low" | "high";
+
 export interface ClinicalInputState {
   nodule_morphology?: string;
   assessment_context?: string;
@@ -472,6 +497,14 @@ export interface ClinicalInputState {
    * derived from nodule_size_mm/nodule_diameter_measurements, and never used to select an index,
    * largest, dominant, or most-suspicious nodule (HITL, issue #16 comment 5849459420). */
   fleischner_multiple_subsolid_any_gte_6mm?: boolean;
+  /** issue #16 Candidate B: source-neutral clinician attestation that every nodule in the
+   * multiple set is fully solid. Never derived from multiple_nodules_all_subsolid. */
+  multiple_nodules_all_solid?: boolean;
+  /** issue #16 Candidate B: set-level Fleischner attestation that all solid nodules are <6 mm
+   * under the established whole-nodule average-diameter convention. */
+  fleischner_multiple_solid_all_lt_6mm?: boolean;
+  /** issue #16 Candidate B: clinician's explicit final Fleischner risk decision. */
+  fleischner_multiple_solid_risk_category?: FleischnerRiskCategory;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---

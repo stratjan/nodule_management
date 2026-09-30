@@ -51,6 +51,7 @@ const clinicalPathwayIdSchema = z.enum([
   "incidental-solitary-part-solid-initial",
   "incidental-solitary-solid-follow-up",
   "incidental-multiple-subsolid-initial",
+  "incidental-multiple-solid-lt-6mm-initial",
 ]);
 
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
@@ -145,7 +146,20 @@ const persistenceSurveillanceRecommendationContentSchema = z
   })
   .strict();
 
-// issue #20/#17: exactly one canonical recommendation representation per Rule Revision. Each
+// issue #16 Candidate B: one source-stated optional action with definite timing.
+const considerActionTimingSchema = z
+  .object({ kind: z.literal("specified"), intervals: z.array(z.string().min(1)).min(1) })
+  .strict();
+
+const considerActionSchema = z
+  .object({ label: z.string().min(1), timing: considerActionTimingSchema })
+  .strict();
+
+const considerActionRecommendationContentSchema = z
+  .object({ considerAction: considerActionSchema, rationale: z.string().min(1) })
+  .strict();
+
+// issue #20/#17/#16 Candidate B: exactly one canonical recommendation representation per Rule Revision. Each
 // member is `.strict()`, so an object carrying keys from more than one form fails every other
 // branch and the union as a whole -- "declares more than one" and "declares none" are rejected
 // without a separate refine.
@@ -154,6 +168,7 @@ const recommendationContentSchema = z.union([
   structuredRecommendationContentSchema,
   noRoutineFollowUpRecommendationContentSchema,
   persistenceSurveillanceRecommendationContentSchema,
+  considerActionRecommendationContentSchema,
 ]);
 
 const provenanceAnchorSchema = z

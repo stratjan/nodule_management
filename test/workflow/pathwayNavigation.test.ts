@@ -12,6 +12,7 @@ import {
   applyNoduleCountBranchReset,
   canContinuePastPathwayStep,
   isMultipleSubsolidShape,
+  isMultipleSolidLt6mmShape,
   pathwayStepOutOfScopeReason,
   shouldClearGr4FollowUpFields,
 } from "../../src/workflow/pathwayNavigation";
@@ -244,10 +245,17 @@ describe("pathwayStepOutOfScopeReason (issue #16 Candidate A, replaces isNoduleC
     ).toBe("multiple-follow-up");
   });
 
-  it("case 28: a set containing a fully solid nodule (F2 false) -> multiple-contains-solid", () => {
+  it("Candidate-B expansion: F2 false alone is pending; an explicitly mixed set is out of scope", () => {
     expect(
       pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, multiple_nodules_all_subsolid: false }),
-    ).toBe("multiple-contains-solid");
+    ).toBeNull();
+    expect(
+      pathwayStepOutOfScopeReason({
+        ...validMultipleSubsolid,
+        multiple_nodules_all_subsolid: false,
+        multiple_nodules_all_solid: false,
+      }),
+    ).toBe("multiple-mixed-solid-subsolid");
   });
 
   it("case 28: a disseminated presentation (F3 false) -> multiple-disseminated", () => {
@@ -492,5 +500,98 @@ describe("F4 clinician-facing wording (issue #16 implementation-readiness sign-o
         "Nodules are discrete/circumscribed (not a disseminated, diffuse, miliary, or metastatic-pattern presentation)",
       ],
     ]);
+  });
+});
+
+
+describe("issue #16 Candidate B workflow/reset", () => {  const validB: ClinicalInputState = {
+    assessment_context: "incidental",
+    assessment_timepoint: "initial",
+    nodule_count: 3,
+    multiple_nodules_all_subsolid: false,
+    multiple_nodules_all_solid: true,
+    multiple_nodules_discrete_circumscribed: true,
+    fleischner_multiple_solid_all_lt_6mm: true,
+    fleischner_multiple_solid_risk_category: "high",
+  };
+
+  function edit(prev: ClinicalInputState, id: string, value: string | number | boolean | undefined) {
+    return applyNoduleCountBranchReset(
+      applyGr4FollowUpReset({ ...prev, [id]: value }, id, value),
+      id,
+      value,
+    );
+  }
+
+  it("recognizes the exact GR-6 shape without a conventional single-lesion measurement", () => {
+    expect(isMultipleSolidLt6mmShape(validB)).toBe(true);
+    expect(canContinuePastPathwayStep(validB)).toBe(true);
+    expect(validB.nodule_size_mm).toBeUndefined();
+    expect(validB.nodule_volume_mm3).toBeUndefined();
+  });
+
+  it("requires all-solid and all-<6 answers after all-subsolid=false", () => {
+    const noSolid: ClinicalInputState = {
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 3,
+      multiple_nodules_all_subsolid: false,
+      multiple_nodules_discrete_circumscribed: true,
+    };
+    expect(canContinuePastPathwayStep(noSolid)).toBe(false);
+    expect(canContinuePastPathwayStep({ ...noSolid, multiple_nodules_all_solid: true })).toBe(false);
+  });
+
+  it("returns the approved mixed / >=6 / follow-up / disseminated reasons", () => {
+    expect(pathwayStepOutOfScopeReason({ ...validB, multiple_nodules_all_solid: false })).toBe(
+      "multiple-mixed-solid-subsolid",
+    );
+    expect(
+      pathwayStepOutOfScopeReason({ ...validB, fleischner_multiple_solid_all_lt_6mm: false }),
+    ).toBe("multiple-solid-gte-6mm");
+    expect(pathwayStepOutOfScopeReason({ ...validB, assessment_timepoint: "follow-up" })).toBe(
+      "multiple-follow-up",
+    );
+    expect(
+      pathwayStepOutOfScopeReason({ ...validB, multiple_nodules_discrete_circumscribed: false }),
+    ).toBe("multiple-disseminated");
+  });
+
+  it("Candidate A -> B clears A F4; Candidate B -> A clears B-specific state", () => {
+    const a: ClinicalInputState = {
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 3,
+      multiple_nodules_all_subsolid: true,
+      multiple_nodules_discrete_circumscribed: true,
+      fleischner_multiple_subsolid_any_gte_6mm: true,
+    };
+    const toB = edit(a, "multiple_nodules_all_subsolid", false);
+    expect(toB.fleischner_multiple_subsolid_any_gte_6mm).toBeUndefined();
+
+    const toA = edit(validB, "multiple_nodules_all_subsolid", true);
+    expect(toA.multiple_nodules_all_solid).toBeUndefined();
+    expect(toA.fleischner_multiple_solid_all_lt_6mm).toBeUndefined();
+    expect(toA.fleischner_multiple_solid_risk_category).toBeUndefined();
+
+    const clearedBranch = edit(validB, "multiple_nodules_all_subsolid", undefined);
+    expect(clearedBranch.multiple_nodules_all_solid).toBeUndefined();
+    expect(clearedBranch.fleischner_multiple_solid_all_lt_6mm).toBeUndefined();
+    expect(clearedBranch.fleischner_multiple_solid_risk_category).toBeUndefined();
+  });
+
+  it("leaving the GR-6 shape clears risk and re-entry does not resurrect it", () => {
+    for (const [id, value] of [
+      ["assessment_context", "screening"],
+      ["assessment_timepoint", "follow-up"],
+      ["multiple_nodules_all_solid", false],
+      ["multiple_nodules_discrete_circumscribed", false],
+      ["fleischner_multiple_solid_all_lt_6mm", false],
+    ] as const) {
+      expect(edit(validB, id, value).fleischner_multiple_solid_risk_category).toBeUndefined();
+    }
+    const left = edit(validB, "assessment_timepoint", "follow-up");
+    const back = edit(left, "assessment_timepoint", "initial");
+    expect(back.fleischner_multiple_solid_risk_category).toBeUndefined();
   });
 });
