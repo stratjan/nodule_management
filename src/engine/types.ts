@@ -57,7 +57,8 @@ export type ClinicalPathwayId =
   | "incidental-solitary-solid-initial"
   | "incidental-solitary-pure-ggn-initial"
   | "incidental-solitary-part-solid-initial"
-  | "incidental-solitary-solid-follow-up";
+  | "incidental-solitary-solid-follow-up"
+  | "incidental-multiple-subsolid-initial";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -450,6 +451,27 @@ export interface ClinicalInputState {
    * candidacy, or any other ClinicalInputState field. The source states no such decomposition, and
    * none is invented here (HITL, issue #15 comment 5767242759). */
   s3_general_condition_precludes_further_workup_or_therapy?: boolean;
+  /** issue #16 Candidate A (F2): source-neutral, set-level clinician attestation that the multiple-
+   * nodule set is subsolid-only. true = every nodule in the multiple set is pure ground-glass and/or
+   * part-solid, and no fully solid nodule is present; false = at least one fully solid nodule is
+   * present (Candidate A does not apply); absent = not yet supplied. A pathway-identity fact for
+   * GR-5 -- never derived from nodule_morphology (which describes a solitary nodule only) or from
+   * any other field, and never backed by a per-lesion record. */
+  multiple_nodules_all_subsolid?: boolean;
+  /** issue #16 Candidate A (F3): source-neutral, set-level clinician attestation that the
+   * presentation consists of multiple discrete/circumscribed nodules. true = discrete/circumscribed,
+   * not a disseminated/diffuse/miliary/metastatic-pattern presentation; false = disseminated/
+   * diffuse/miliary/metastatic-pattern presentation (Candidate A does not apply); absent = not yet
+   * supplied. A pathway-identity fact for GR-5 -- no algorithm for "disseminated" is introduced,
+   * and nodule_count alone never implies either value. */
+  multiple_nodules_discrete_circumscribed?: boolean;
+  /** issue #16 Candidate A (F4): Fleischner-specific, set-level clinician attestation of the
+   * Fleischner 2017 multiple-subsolid size criterion. true = at least one subsolid nodule is >=6 mm
+   * (State B); false = all subsolid nodules are <6 mm (State A); absent = not yet supplied. An
+   * attestation of the source criterion itself -- never a single-lesion numeric measurement, never
+   * derived from nodule_size_mm/nodule_diameter_measurements, and never used to select an index,
+   * largest, dominant, or most-suspicious nodule (HITL, issue #16 comment 5849459420). */
+  fleischner_multiple_subsolid_any_gte_6mm?: boolean;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---

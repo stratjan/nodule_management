@@ -3,12 +3,24 @@ import { evaluate } from "../engine/evaluate";
 import type { ClinicalInputState, DecisionExecutionTrace } from "../engine/types";
 import { activeRelease } from "../data/activeRelease";
 import { activeManifest } from "../data/activeManifest";
-import { pathwayFields, measurementFields, applicabilityFields, followUpFields } from "../workflow/fields";
+import {
+  pathwayFields,
+  measurementFields,
+  applicabilityFields,
+  followUpFields,
+  multipleSubsolidPathwayFields,
+  multipleSubsolidFleischnerFields,
+  FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT,
+} from "../workflow/fields";
+import type { FieldDef } from "../workflow/fields";
 import {
   applyGr4FollowUpReset,
+  applyNoduleCountBranchReset,
   canContinuePastPathwayStep,
-  isNoduleCountOutOfScope,
+  isMultipleSubsolidShape,
+  pathwayStepOutOfScopeReason,
 } from "../workflow/pathwayNavigation";
+import type { PathwayStepOutOfScopeReason } from "../workflow/pathwayNavigation";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
 import { RecommendationView } from "./RecommendationView";
@@ -27,6 +39,25 @@ const OUTCOME_LABELS: Record<string, string> = {
   OUTSIDE_CURRENT_RULESET_SCOPE: "Not covered by this Rule-Set Release yet",
   INSUFFICIENT_INPUT: "Insufficient input",
 };
+
+// issue #16 Candidate A: reason-specific out-of-scope notices for the multiple-nodule branch --
+// navigation only; the engine's Clinical Pathway Gates remain the clinical authority.
+const OUT_OF_SCOPE_NOTICES: Record<PathwayStepOutOfScopeReason, string> = {
+  "multiple-follow-up": "Follow-up assessment of multiple nodules is not covered by this Rule-Set Release.",
+  "multiple-contains-solid": "Sets containing a fully solid nodule are not covered by this Rule-Set Release.",
+  "multiple-disseminated":
+    "Disseminated, diffuse, miliary, or metastatic-pattern presentations are outside this tool's scope.",
+};
+
+// issue #16 Candidate A: nodule_count is asked first so the solitary/multiple branch is known
+// before morphology (solitary) or the set-level facts (multiple) are asked. Render order only --
+// the field definitions themselves are unchanged.
+const noduleCountField = pathwayFields.find((field) => field.id === "nodule_count") as FieldDef;
+const solitaryPathwayFields = pathwayFields.filter((field) => field.id !== "nodule_count");
+const multiplePathwayFields: FieldDef[] = [
+  ...pathwayFields.filter((field) => field.id === "assessment_context" || field.id === "assessment_timepoint"),
+  ...multipleSubsolidPathwayFields,
+];
 
 export function App() {
   const [step, setStep] = useState<Step>("pathway");
@@ -49,8 +80,15 @@ export function App() {
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => {
       const next: ClinicalInputState = { ...prev, [id]: value };
-      return applyGr4FollowUpReset(next, id, value);
+      return applyNoduleCountBranchReset(applyGr4FollowUpReset(next, id, value), id, value);
     });
+    // issue #16 Candidate A: leaving the solitary branch invalidates every solitary-only UI-local
+    // measurement affirmation, same never-carry-over invariant as the ClinicalInputState reset.
+    if (id === "nodule_count" && value !== 1) {
+      setFleischnerConventionConfirmed(false);
+      setSolidComponentSizeMm(undefined);
+      setSolidComponentConventionConfirmed(false);
+    }
     // issue #20 review: the affirmation is only ever valid for the diameter value it was given
     // for -- any edit to that value (including clearing it) invalidates a prior affirmation, so
     // it must never silently carry over and get tagged onto a new, unaffirmed value.
@@ -111,11 +149,19 @@ export function App() {
     input.assessment_timepoint === "follow-up" &&
     input.nodule_count === 1;
 
+  // issue #16 Candidate A: the GR-5 shape (multiple subsolid, initial) needs no diameter/volume
+  // measurement at all -- its step-2 measurement block is replaced by the Fleischner set-level
+  // size-state question.
+  const multipleSubsolidShape = isMultipleSubsolidShape(input);
+  const outOfScopeReason = pathwayStepOutOfScopeReason(input);
+
   const canConfirmPathway = canContinuePastPathwayStep(input);
   // issue #15 Candidate A0: the follow-up pathway is evaluable with no measurement field at all --
   // an unanswered S3 criterion is itself a valid, intended INSUFFICIENT_INPUT outcome (G3), not a
   // state the UI should block reaching. Unchanged for every existing initial-timepoint pathway.
-  const canEvaluate = hasMeasurement || isFollowUpTimepoint;
+  // issue #16 Candidate A: likewise for the GR-5 shape -- an unanswered Fleischner size state is
+  // the intended Fleischner INSUFFICIENT_INPUT outcome.
+  const canEvaluate = hasMeasurement || isFollowUpTimepoint || multipleSubsolidShape;
 
   const handleConfirmPathway = () => {
     if (!canConfirmPathway) return;
@@ -174,20 +220,25 @@ export function App() {
     <main className="app">
       <header>
         <h1>Colibri Nodule Management</h1>
-        <p className="subtitle">
-          Incidental, solitary pulmonary nodule &mdash; initial assessment (S3 + Fleischner)
-        </p>
+        <p className="subtitle">Incidental pulmonary nodules (S3 + Fleischner)</p>
       </header>
 
       {step === "pathway" && (
         <section aria-label="Pathway identification">
           <h2>1. Confirm this pathway applies</h2>
           <p>
-            All four fields must be answered before any guideline is evaluated -- pathway
+            All pathway fields must be answered before any guideline is evaluated — pathway
             identification is never guessed.
           </p>
           <div className="field-grid">
-            {pathwayFields.map((field) => (
+            {[
+              noduleCountField,
+              ...(input.nodule_count === 1
+                ? solitaryPathwayFields
+                : input.nodule_count !== undefined && Number.isInteger(input.nodule_count) && input.nodule_count >= 2
+                  ? multiplePathwayFields
+                  : []),
+            ].map((field) => (
               <FieldInput
                 key={field.id}
                 field={field}
@@ -196,12 +247,8 @@ export function App() {
               />
             ))}
           </div>
-          {isNoduleCountOutOfScope(input) && (
-            <p className="notice notice-block">
-              This pathway is scoped to a solitary nodule only. A nodule count of{" "}
-              {input.nodule_count} (discrete-multiple or disseminated) is out of scope for this
-              vertical slice. Continue is disabled until nodule count is 1.
-            </p>
+          {outOfScopeReason !== null && (
+            <p className="notice notice-block">{OUT_OF_SCOPE_NOTICES[outOfScopeReason]}</p>
           )}
           <button disabled={!canConfirmPathway} onClick={handleConfirmPathway}>
             Continue
@@ -213,7 +260,28 @@ export function App() {
         <section aria-label="Clinical details">
           <h2>2. Nodule measurement and patient factors</h2>
 
-          {!isFollowUpTimepoint && (
+          {multipleSubsolidShape && (
+            <>
+              <p>
+                Fleischner recommends an initial CT at 3–6 months for multiple subsolid nodules.
+                Indicate whether at least one subsolid nodule measures 6 mm or larger — the app does
+                not select or measure an individual nodule.
+              </p>
+              <p>{FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT}</p>
+              <div className="field-grid">
+                {multipleSubsolidFleischnerFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {!isFollowUpTimepoint && !multipleSubsolidShape && (
             <>
               <p>Enter diameter and/or volume &mdash; at least one is required.</p>
               <div className="field-grid">

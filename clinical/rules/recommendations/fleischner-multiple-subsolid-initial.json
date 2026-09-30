@@ -1,0 +1,59 @@
+{
+  "ruleId": "ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL",
+  "revisionId": "ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-multiple-subsolid-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-27" },
+  "provenanceAnchors": [
+    {
+      "role": "criterion-all-subsolid-lt-6mm",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Table B (Subsolid Nodules), multiple-subsolid row for nodules <6 mm (CT at 3-6 months), together with Recommendation 5 (multiple subsolid lung nodules). Paraphrase only. The source's narrative discusses early follow-up of multiple subsolid nodules all <6 mm in the context of possible infectious/nonneoplastic causes and diagnostic uncertainty; Table B together with Recommendation 5 was accepted as sufficient support for this initial CT recommendation (Clinical/Product HITL, issue #16 comment 5849459420, HITL 4). Only the first follow-up CT is governed here."
+      }
+    },
+    {
+      "role": "criterion-any-subsolid-gte-6mm",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Table B (Subsolid Nodules), multiple-subsolid row for nodules >=6 mm (CT at 3-6 months), together with Recommendation 5 (multiple subsolid lung nodules with at least one nodule that is 6 mm or larger). Paraphrase only. The source's subsequent management based on the most suspicious nodule is outside this rule; no index, largest, dominant, or most-suspicious nodule is selected by this application."
+      }
+    },
+    {
+      "role": "local-management",
+      "provenance": {
+        "sourceDocument": "Local SOP",
+        "version": "unreleased snapshot dated 2024-12-08 (sha256:a537acd982f25776abd1ba5fac4a9929b0fb16a82446efaec23bdebd5aa14df6)",
+        "originalLanguage": "German",
+        "sourceType": "Local SOP",
+        "locator": "Fleischner narrative, \"Multiple subsolide Rundherde\" passage (<6 mm / >=6 mm, CT after 3-6 months). The exact executable semantics come from the primary source per issue #23 R8 (comment 5849116401), not from this Local SOP passage; the Local SOP's Tabelle 2/3 multiple-subsolid content (including its S3 and BTS columns) is not used by this rule."
+      }
+    }
+  ],
+  "sufficientConditionGroups": [
+    {
+      "groupId": "all-subsolid-lt-6mm",
+      "conditions": [{ "field": "fleischner_multiple_subsolid_any_gte_6mm", "op": "eq", "value": false }],
+      "provenanceRole": "criterion-all-subsolid-lt-6mm"
+    },
+    {
+      "groupId": "any-subsolid-gte-6mm",
+      "conditions": [{ "field": "fleischner_multiple_subsolid_any_gte_6mm", "op": "eq", "value": true }],
+      "provenanceRole": "criterion-any-subsolid-gte-6mm"
+    }
+  ],
+  "recommendation": {
+    "actions": [
+      { "label": "CT follow-up", "timing": { "kind": "specified", "intervals": ["3-6 months"] } }
+    ],
+    "rationale": "Fleischner (2017) Recommendation 5 and Table B recommend, for multiple subsolid pulmonary nodules found incidentally, an initial CT follow-up at 3-6 months — both when all subsolid nodules are smaller than 6 mm and when at least one subsolid nodule is 6 mm or larger — in a patient >=35 years old with no known malignancy history and not immunocompromised. This rule applies only to multiple discrete/circumscribed nodules whose set is subsolid-only (pure ground-glass and/or part-solid, no fully solid nodule), at initial assessment. The size state is a clinician-attested set-level fact; no index, largest, dominant, or most-suspicious nodule is selected by this application. For multiple subsolid nodules all smaller than 6 mm, the source's narrative discusses early follow-up in the context of possible infectious/nonneoplastic causes and diagnostic uncertainty; Table B together with Recommendation 5 was accepted as sufficient support for this initial CT recommendation (Clinical/Product HITL, issue #16). This recommendation covers only the first follow-up CT: later CT at 2 and 4 years, persistence/stability assessment, management based on the most suspicious nodule, and any PET/CT, biopsy, or surgical implication are outside this Rule-Set Release and must not be inferred from it."
+  }
+}

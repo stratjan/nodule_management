@@ -37,7 +37,8 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(4);
+    expect(trace.clinicalPathwayGates).toHaveLength(5);
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
   });
 
   it("pure-ground-glass input selects incidental-solitary-pure-ggn-initial", () => {
@@ -73,7 +74,8 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-part-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(4);
+    expect(trace.clinicalPathwayGates).toHaveLength(5);
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
   });
 
   it("solid follow-up input selects incidental-solitary-solid-follow-up (issue #15 Candidate A0)", () => {
@@ -90,7 +92,8 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-follow-up",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(4);
+    expect(trace.clinicalPathwayGates).toHaveLength(5);
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
   });
 
   it("GR-4 never co-matches GR-1/GR-2/GR-3 -- assessment_timepoint's initial/follow-up values are mutually exclusive by construction", () => {

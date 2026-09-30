@@ -569,7 +569,7 @@ describe("part-solid pathway (issue #18)", () => {
     });
   });
 
-  it("issue #30: engineVersion and schemaVersion both report 1.6.0 -- nonBlockingUnresolvedSiblings is a genuine, additive schema extension and a real source-aggregation-semantics change, not merely an evaluate.ts-internal change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.5.0 contract for either", () => {
+  it("issue #16 Candidate A: engineVersion and schemaVersion both report 1.7.0 -- clinicalPathwayIdSchema gains incidental-multiple-subsolid-initial (a Release containing it is rejected by the 1.6.0 closed enum), and the engine version moves in lockstep with no evaluation-semantic change; every trace produced by the current engine/schema, including this unrelated State-A case, must not silently claim the prior 1.6.0 contract for either", () => {
     const input: ClinicalInputState = {
       ...partSolidBasePathway,
       ...baseApplicability,
@@ -577,8 +577,8 @@ describe("part-solid pathway (issue #18)", () => {
       nodule_diameter_measurements: fleischnerMeasurement(5),
     };
     const trace = evaluate(input, release);
-    expect(trace.engineVersion).toBe("1.6.0");
-    expect(trace.schemaVersion).toBe("1.6.0");
+    expect(trace.engineVersion).toBe("1.7.0");
+    expect(trace.schemaVersion).toBe("1.7.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {

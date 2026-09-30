@@ -1,0 +1,22 @@
+{
+  "ruleId": "GR-5",
+  "revisionId": "GR-5-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "stratjan", "at": "2026-09-27" },
+  "provenance": {
+    "sourceDocument": "GitHub issue #16 (Clinical/Product HITL sign-off 5849459420; architecture sign-off 5850001047 on #35; final spec)",
+    "version": "issue #16 final spec",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Issue #16 Clinical/Product HITL sign-off (comment 5849459420) HITL 1 (incidental, initial assessment, multiple discrete/circumscribed subsolid nodules), HITL 2 (subsolid-only set: pure GGN and/or part-solid, no fully solid member), and HITL 7 (disseminated/diffuse/miliary/metastatic-pattern presentations excluded); issue #35 architecture sign-off (comment 5850001047) §G (set-level Clinical Input State representation, separate Clinical Pathway Gate); final spec issue #16 comment 5858670823 §3"
+  },
+  "clinicalPathwayId": "incidental-multiple-subsolid-initial",
+  "conditions": [
+    { "field": "assessment_context", "op": "eq", "value": "incidental" },
+    { "field": "assessment_timepoint", "op": "eq", "value": "initial" },
+    { "field": "nodule_count", "op": "gte", "value": 2 },
+    { "field": "multiple_nodules_all_subsolid", "op": "eq", "value": true },
+    { "field": "multiple_nodules_discrete_circumscribed", "op": "eq", "value": true }
+  ]
+}
