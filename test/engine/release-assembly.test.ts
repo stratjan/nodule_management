@@ -34,11 +34,11 @@ function loadSyntheticOverlappingRules(): RuleRevision[] {
 }
 
 describe("Rule-Set Release assembly", () => {
-  it("includes exactly the 18 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor, now -r3 with Candidate C's general-condition group) + issue #26's part-solid solid-component >8mm rule + issue #15/#30's Candidate B2 VDT<400 work-up rule, now -r2 revision-maintenance-only + issue #16 Candidate A's GR-5-r1 and ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL-r1), nothing else, no BTS content", () => {
+  it("includes exactly the 21 Approved revisions (Phase 1 + issue #20's Fleischner >8mm rule + issue #17's pure-GGN pathway + issue #18's part-solid pathway + issue #15/#28's solid follow-up pathway (Candidate B1 successor, now -r3 with Candidate C's general-condition group) + issue #26's part-solid solid-component >8mm rule + issue #15/#30's Candidate B2 VDT<400 work-up rule, now -r2 revision-maintenance-only + issue #16 Candidate A's GR-5-r1 and ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL-r1), nothing else, no BTS content", () => {
     const revisions = loadApprovedPhase1Revisions();
     const release = buildRuleSetRelease(revisions);
 
-    expect(release.revisions).toHaveLength(18);
+    expect(release.revisions).toHaveLength(21);
     expect(release.revisions.every((r) => r.approvalStatus === "Approved")).toBe(true);
     expect(
       release.revisions.some(
@@ -52,6 +52,8 @@ describe("Rule-Set Release assembly", () => {
       "ACR-FLEISCHNER-GGN-GTE6MM",
       "ACR-FLEISCHNER-GGN-LT6MM",
       "ACR-FLEISCHNER-GT8TO30MM",
+      "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK",
+      "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-LOW-RISK",
       "ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL",
       "ACR-FLEISCHNER-PARTSOLID-GTE6MM-SOLIDLT6MM",
       "ACR-FLEISCHNER-PARTSOLID-LT6MM",
@@ -64,6 +66,7 @@ describe("Rule-Set Release assembly", () => {
       "GR-3",
       "GR-4",
       "GR-5",
+      "GR-6",
       "SAR-FLEISCHNER",
       "SAR-S3",
     ]);
@@ -101,7 +104,7 @@ describe("Rule-Set Release assembly", () => {
   it("the real Approved set builds successfully (no false-positive overlap between the 6-8mm, >8mm, pure-GGN, part-solid, part-solid solid-component >8mm, and follow-up rules across pathways -- including the Rule-1/Candidate-C pair that release-time overlap validation is blind to by field construction, per issue #26)", () => {
     const revisions = loadApprovedPhase1Revisions();
     expect(() => buildRuleSetRelease(revisions)).not.toThrow();
-    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(18);
+    expect(buildRuleSetRelease(revisions).revisions).toHaveLength(21);
   });
 
   it("issue #15/#28: ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT's sufficientConditionGroups conditions never trigger the overlap guard -- extractNumericRange/rangesOverlap only ever inspect diameterConditions/volumeConditions, both undefined on this rule, so it can never be reported as overlapping with anything (S3 has only one Atomic Clinical Rule per pathway anyway)", () => {

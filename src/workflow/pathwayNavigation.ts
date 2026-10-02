@@ -6,13 +6,17 @@
 // whether a pathway actually matched; these predicates never substitute for that evaluation, they
 // only decide when to show the "Continue" step and which fields to ask.
 import type { ClinicalInputState } from "../engine/types";
-import { multipleSubsolidPathwayFields, pathwayFields } from "./fields";
+import { pathwayFields } from "./fields";
 
 type FieldValue = string | number | boolean | undefined;
 
 /** issue #16 Candidate A: why a multiple-nodule pathway-step input is outside what this Rule-Set
  * Release covers -- a navigation mirror only, never a clinical outcome. */
-export type PathwayStepOutOfScopeReason = "multiple-follow-up" | "multiple-contains-solid" | "multiple-disseminated";
+export type PathwayStepOutOfScopeReason =
+  | "multiple-follow-up"
+  | "multiple-mixed-solid-subsolid"
+  | "multiple-disseminated"
+  | "multiple-solid-gte-6mm";
 
 /** issue #16 Candidate A: the multiple-nodule branch applies to a whole-number nodule count of at
  * least 2. Any other value (1, cleared, fractional) is not the multiple branch. */
@@ -33,8 +37,16 @@ export function pathwayStepOutOfScopeReason(
 ): PathwayStepOutOfScopeReason | null {
   if (!isMultipleNoduleCount(input.nodule_count)) return null;
   if (input.assessment_timepoint === "follow-up") return "multiple-follow-up";
-  if (input.multiple_nodules_all_subsolid === false) return "multiple-contains-solid";
+  if (
+    input.multiple_nodules_all_subsolid === false &&
+    input.multiple_nodules_all_solid === false
+  ) return "multiple-mixed-solid-subsolid";
   if (input.multiple_nodules_discrete_circumscribed === false) return "multiple-disseminated";
+  if (
+    input.multiple_nodules_all_subsolid === false &&
+    input.multiple_nodules_all_solid === true &&
+    input.fleischner_multiple_solid_all_lt_6mm === false
+  ) return "multiple-solid-gte-6mm";
   return null;
 }
 
@@ -50,16 +62,21 @@ export function canContinuePastPathwayStep(input: Partial<ClinicalInputState>): 
     );
   }
   if (isMultipleNoduleCount(input.nodule_count)) {
-    // issue #16 Candidate A: nodule_morphology is neither shown nor required in the multiple
-    // branch -- the two set-level facts replace it.
-    return (
-      allAnswered(input, [
-        "assessment_context",
-        "assessment_timepoint",
-        "nodule_count",
-        ...multipleSubsolidPathwayFields.map((field) => field.id),
-      ]) && pathwayStepOutOfScopeReason(input) === null
-    );
+    if (!allAnswered(input, [
+      "assessment_context",
+      "assessment_timepoint",
+      "nodule_count",
+      "multiple_nodules_all_subsolid",
+      "multiple_nodules_discrete_circumscribed",
+    ])) return false;
+    if (input.multiple_nodules_all_subsolid === false) {
+      if (input.multiple_nodules_all_solid === undefined) return false;
+      if (
+        input.multiple_nodules_all_solid === true &&
+        input.fleischner_multiple_solid_all_lt_6mm === undefined
+      ) return false;
+    }
+    return pathwayStepOutOfScopeReason(input) === null;
   }
   return false;
 }
@@ -74,6 +91,19 @@ export function isMultipleSubsolidShape(input: Partial<ClinicalInputState>): boo
     isMultipleNoduleCount(input.nodule_count) &&
     input.multiple_nodules_all_subsolid === true &&
     input.multiple_nodules_discrete_circumscribed === true
+  );
+}
+
+/** issue #16 Candidate B: exact bounded GR-6 shape. */
+export function isMultipleSolidLt6mmShape(input: Partial<ClinicalInputState>): boolean {
+  return (
+    input.assessment_context === "incidental" &&
+    input.assessment_timepoint === "initial" &&
+    isMultipleNoduleCount(input.nodule_count) &&
+    input.multiple_nodules_all_subsolid === false &&
+    input.multiple_nodules_all_solid === true &&
+    input.multiple_nodules_discrete_circumscribed === true &&
+    input.fleischner_multiple_solid_all_lt_6mm === true
   );
 }
 
@@ -160,19 +190,40 @@ export function applyNoduleCountBranchReset(
     }
     if (!isMultipleNoduleCount(value)) {
       delete reset.multiple_nodules_all_subsolid;
+      delete reset.multiple_nodules_all_solid;
       delete reset.multiple_nodules_discrete_circumscribed;
       delete reset.fleischner_multiple_subsolid_any_gte_6mm;
+      delete reset.fleischner_multiple_solid_all_lt_6mm;
+      delete reset.fleischner_multiple_solid_risk_category;
     }
     return reset;
   }
 
-  const leavesGr5Shape =
+  const leavesGr5 =
     (id === "assessment_timepoint" && value !== "initial") ||
     (id === "assessment_context" && value !== "incidental") ||
     (id === "multiple_nodules_all_subsolid" && value !== true) ||
     (id === "multiple_nodules_discrete_circumscribed" && value !== true);
-  if (leavesGr5Shape) {
-    delete reset.fleischner_multiple_subsolid_any_gte_6mm;
+  if (leavesGr5) delete reset.fleischner_multiple_subsolid_any_gte_6mm;
+
+  if (id === "multiple_nodules_all_subsolid" && value !== false) {
+    delete reset.multiple_nodules_all_solid;
+    delete reset.fleischner_multiple_solid_all_lt_6mm;
+    delete reset.fleischner_multiple_solid_risk_category;
   }
+  if (id === "multiple_nodules_all_solid" && value !== true) {
+    delete reset.fleischner_multiple_solid_all_lt_6mm;
+    delete reset.fleischner_multiple_solid_risk_category;
+  }
+
+  const leavesGr6 =
+    (id === "assessment_timepoint" && value !== "initial") ||
+    (id === "assessment_context" && value !== "incidental") ||
+    (id === "multiple_nodules_all_subsolid" && value !== false) ||
+    (id === "multiple_nodules_all_solid" && value !== true) ||
+    (id === "multiple_nodules_discrete_circumscribed" && value !== true) ||
+    (id === "fleischner_multiple_solid_all_lt_6mm" && value !== true);
+  if (leavesGr6) delete reset.fleischner_multiple_solid_risk_category;
+
   return reset;
 }

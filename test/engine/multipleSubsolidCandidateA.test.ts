@@ -61,6 +61,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-3": "NOT_MATCHED",
       "GR-4": "NOT_MATCHED",
       "GR-5": "MATCHED",
+      "GR-6": "NOT_MATCHED",
     });
   });
 
@@ -73,13 +74,22 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-3": "NOT_MATCHED",
       "GR-4": "NOT_MATCHED",
       "GR-5": "MATCHED",
+      "GR-6": "NOT_MATCHED",
     });
   });
 
-  it("case 3: F2 false (set contains a fully solid nodule) -> NO_PATHWAY_MATCHED", () => {
-    const trace = evaluate({ ...base, multiple_nodules_all_subsolid: false }, release);
-    expect(trace.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
-    expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
+  it("case 3: F2 false alone -> INSUFFICIENT_INPUT because the new all-solid branch remains possible; an explicitly mixed set remains NO_PATHWAY_MATCHED", () => {
+    const pending = evaluate({ ...base, multiple_nodules_all_subsolid: false }, release);
+    expect(pending.pathwaySelection).toEqual({ state: "INSUFFICIENT_INPUT" });
+    expect(pending.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
+    expect(pending.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("INDETERMINATE");
+
+    const mixed = evaluate(
+      { ...base, multiple_nodules_all_subsolid: false, multiple_nodules_all_solid: false },
+      release,
+    );
+    expect(mixed.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
+    expect(mixed.sourceEvaluationOutcomes).toHaveLength(0);
   });
 
   it("case 4: F3 false (disseminated presentation) -> NO_PATHWAY_MATCHED", () => {
@@ -411,7 +421,7 @@ describe("governed JSON shape (case 32)", () => {
 describe("versions (case 33)", () => {
   it("a Candidate-A trace reports engineVersion and schemaVersion 1.7.0", () => {
     const trace = evaluate({ ...base, fleischner_multiple_subsolid_any_gte_6mm: true }, release);
-    expect(trace.engineVersion).toBe("1.7.0");
-    expect(trace.schemaVersion).toBe("1.7.0");
+    expect(trace.engineVersion).toBe("1.8.0");
+    expect(trace.schemaVersion).toBe("1.8.0");
   });
 });

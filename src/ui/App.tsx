@@ -11,6 +11,11 @@ import {
   multipleSubsolidPathwayFields,
   multipleSubsolidFleischnerFields,
   FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT,
+  multipleSolidSetField,
+  multipleSolidSizeField,
+  multipleSolidFleischnerRiskFields,
+  FLEISCHNER_MULTIPLE_SOLID_MEASUREMENT_HELP_TEXT,
+  FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE,
 } from "../workflow/fields";
 import type { FieldDef } from "../workflow/fields";
 import {
@@ -18,12 +23,14 @@ import {
   applyNoduleCountBranchReset,
   canContinuePastPathwayStep,
   isMultipleSubsolidShape,
+  isMultipleSolidLt6mmShape,
   pathwayStepOutOfScopeReason,
 } from "../workflow/pathwayNavigation";
 import type { PathwayStepOutOfScopeReason } from "../workflow/pathwayNavigation";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
 import { RecommendationView } from "./RecommendationView";
+import { FleischnerRiskDecisionSupport } from "./FleischnerRiskDecisionSupport";
 
 type FieldValue = string | number | boolean | undefined;
 type Step = "pathway" | "clinical-details" | "results";
@@ -44,9 +51,12 @@ const OUTCOME_LABELS: Record<string, string> = {
 // navigation only; the engine's Clinical Pathway Gates remain the clinical authority.
 const OUT_OF_SCOPE_NOTICES: Record<PathwayStepOutOfScopeReason, string> = {
   "multiple-follow-up": "Follow-up assessment of multiple nodules is not covered by this Rule-Set Release.",
-  "multiple-contains-solid": "Sets containing a fully solid nodule are not covered by this Rule-Set Release.",
+  "multiple-mixed-solid-subsolid":
+    "Sets mixing fully solid and subsolid nodules are not covered by this Rule-Set Release.",
   "multiple-disseminated":
     "Disseminated, diffuse, miliary, or metastatic-pattern presentations are outside this tool's scope.",
+  "multiple-solid-gte-6mm":
+    "Multiple solid nodules with at least one nodule 6 mm or larger are not yet covered by this Rule-Set Release.",
 };
 
 // issue #16 Candidate A: nodule_count is asked first so the solitary/multiple branch is known
@@ -54,10 +64,15 @@ const OUT_OF_SCOPE_NOTICES: Record<PathwayStepOutOfScopeReason, string> = {
 // the field definitions themselves are unchanged.
 const noduleCountField = pathwayFields.find((field) => field.id === "nodule_count") as FieldDef;
 const solitaryPathwayFields = pathwayFields.filter((field) => field.id !== "nodule_count");
-const multiplePathwayFields: FieldDef[] = [
-  ...pathwayFields.filter((field) => field.id === "assessment_context" || field.id === "assessment_timepoint"),
-  ...multipleSubsolidPathwayFields,
-];
+const multipleCommonPathwayFields = pathwayFields.filter(
+  (field) => field.id === "assessment_context" || field.id === "assessment_timepoint",
+);
+const multipleAllSubsolidField = multipleSubsolidPathwayFields.find(
+  (field) => field.id === "multiple_nodules_all_subsolid",
+) as FieldDef;
+const multipleDiscreteField = multipleSubsolidPathwayFields.find(
+  (field) => field.id === "multiple_nodules_discrete_circumscribed",
+) as FieldDef;
 
 export function App() {
   const [step, setStep] = useState<Step>("pathway");
@@ -153,6 +168,7 @@ export function App() {
   // measurement at all -- its step-2 measurement block is replaced by the Fleischner set-level
   // size-state question.
   const multipleSubsolidShape = isMultipleSubsolidShape(input);
+  const multipleSolidLt6mmShape = isMultipleSolidLt6mmShape(input);
   const outOfScopeReason = pathwayStepOutOfScopeReason(input);
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
@@ -161,7 +177,8 @@ export function App() {
   // state the UI should block reaching. Unchanged for every existing initial-timepoint pathway.
   // issue #16 Candidate A: likewise for the GR-5 shape -- an unanswered Fleischner size state is
   // the intended Fleischner INSUFFICIENT_INPUT outcome.
-  const canEvaluate = hasMeasurement || isFollowUpTimepoint || multipleSubsolidShape;
+  const canEvaluate =
+    hasMeasurement || isFollowUpTimepoint || multipleSubsolidShape || multipleSolidLt6mmShape;
 
   const handleConfirmPathway = () => {
     if (!canConfirmPathway) return;
@@ -235,8 +252,21 @@ export function App() {
               noduleCountField,
               ...(input.nodule_count === 1
                 ? solitaryPathwayFields
-                : input.nodule_count !== undefined && Number.isInteger(input.nodule_count) && input.nodule_count >= 2
-                  ? multiplePathwayFields
+                : input.nodule_count !== undefined &&
+                    Number.isInteger(input.nodule_count) &&
+                    input.nodule_count >= 2
+                  ? [
+                      ...multipleCommonPathwayFields,
+                      multipleAllSubsolidField,
+                      ...(input.multiple_nodules_all_subsolid === false
+                        ? [multipleSolidSetField]
+                        : []),
+                      multipleDiscreteField,
+                      ...(input.multiple_nodules_all_subsolid === false &&
+                      input.multiple_nodules_all_solid === true
+                        ? [multipleSolidSizeField]
+                        : []),
+                    ]
                   : []),
             ].map((field) => (
               <FieldInput
@@ -247,6 +277,10 @@ export function App() {
               />
             ))}
           </div>
+          {input.multiple_nodules_all_subsolid === false &&
+            input.multiple_nodules_all_solid === true && (
+              <p>{FLEISCHNER_MULTIPLE_SOLID_MEASUREMENT_HELP_TEXT}</p>
+            )}
           {outOfScopeReason !== null && (
             <p className="notice notice-block">{OUT_OF_SCOPE_NOTICES[outOfScopeReason]}</p>
           )}
@@ -281,7 +315,28 @@ export function App() {
             </>
           )}
 
-          {!isFollowUpTimepoint && !multipleSubsolidShape && (
+          {multipleSolidLt6mmShape && (
+            <>
+              <p>
+                Select the Fleischner risk category you have determined for this patient. The app
+                does not calculate, score, weight, or infer this category from any other input.
+              </p>
+              <FleischnerRiskDecisionSupport />
+              <p className="notice">{FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE}</p>
+              <div className="field-grid">
+                {multipleSolidFleischnerRiskFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {!isFollowUpTimepoint && !multipleSubsolidShape && !multipleSolidLt6mmShape && (
             <>
               <p>Enter diameter and/or volume &mdash; at least one is required.</p>
               <div className="field-grid">

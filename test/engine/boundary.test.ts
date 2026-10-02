@@ -577,8 +577,8 @@ describe("part-solid pathway (issue #18)", () => {
       nodule_diameter_measurements: fleischnerMeasurement(5),
     };
     const trace = evaluate(input, release);
-    expect(trace.engineVersion).toBe("1.7.0");
-    expect(trace.schemaVersion).toBe("1.7.0");
+    expect(trace.engineVersion).toBe("1.8.0");
+    expect(trace.schemaVersion).toBe("1.8.0");
   });
 
   it("boundary -- whole 6mm exactly + solid 5mm: State-B recommendation (>=6mm is the active branch, not >6mm)", () => {

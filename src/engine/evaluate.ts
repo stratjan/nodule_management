@@ -32,13 +32,14 @@ import {
   hasMultiAnchorProvenance,
   isNoRoutineFollowUpRecommendation,
   isPersistenceSurveillanceRecommendation,
+  isConsiderActionRecommendation,
   isStructuredRecommendation,
   OPERAND_CONTAINER,
   OPERAND_SHADOW_FIELD,
 } from "./types";
 
-export const ENGINE_VERSION = "1.7.0";
-export const SCHEMA_VERSION = "1.7.0";
+export const ENGINE_VERSION = "1.8.0";
+export const SCHEMA_VERSION = "1.8.0";
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -187,7 +188,7 @@ function isAtomicClinicalRule(
   return r.kind === "atomic-clinical-rule";
 }
 
-/** issue #20/#17: carries whichever of the four recommendation forms the rule declared, through
+/** issue #20/#17/#16 Candidate B: carries whichever of the five recommendation forms the rule declared, through
  * to the trace/Recommendation Set -- never synthesizing another form. */
 function buildRecommendationContentPayload(recommendation: RecommendationContent) {
   if (isStructuredRecommendation(recommendation)) {
@@ -202,6 +203,9 @@ function buildRecommendationContentPayload(recommendation: RecommendationContent
       ifPersistent: recommendation.ifPersistent,
       rationale: recommendation.rationale,
     };
+  }
+  if (isConsiderActionRecommendation(recommendation)) {
+    return { considerAction: recommendation.considerAction, rationale: recommendation.rationale };
   }
   return {
     clinicalEndpoint: recommendation.clinicalEndpoint,

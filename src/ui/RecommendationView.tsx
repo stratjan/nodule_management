@@ -9,6 +9,7 @@ import {
   hasMultiAnchorProvenance,
   isNoRoutineFollowUpRecommendation,
   isPersistenceSurveillanceRecommendation,
+  isConsiderActionRecommendation,
   isStructuredRecommendation,
 } from "../engine/types";
 
@@ -70,6 +71,16 @@ export function RecommendationView({ recommendation }: { recommendation: Recomme
         <ul className="action-list">
           <PersistenceStepView step={recommendation.persistenceConfirmation} conditional={false} />
           <PersistenceStepView step={recommendation.ifPersistent} conditional={true} />
+        </ul>
+      ) : isConsiderActionRecommendation(recommendation) ? (
+        <ul className="action-list">
+          <li className="clinical-action clinical-action-optional">
+            <strong>{recommendation.considerAction.label}</strong>:{" "}
+            {recommendation.considerAction.timing.intervals.join(", ")}
+            <span className="optional-qualifier">
+              {" "}— may be considered (optional; not a mandatory recommendation)
+            </span>
+          </li>
         </ul>
       ) : (
         <p>

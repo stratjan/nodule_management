@@ -1,0 +1,55 @@
+{
+  "ruleId": "GR-6",
+  "revisionId": "GR-6-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-09-30"
+  },
+  "provenance": {
+    "sourceDocument": "GitHub issue #16 (Clinical/Product HITL sign-off 5917098959; risk clarification 5917117015; architecture sign-off 5917524561 on #37; final spec 5917726111; readiness sign-off 5917894328)",
+    "version": "issue #16 Candidate B final spec",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Candidate B boundary: incidental, initial, multiple solid-only discrete/circumscribed nodules, all <6 mm; GR-5/GR-6 exclusivity condition approved in readiness 5917894328 item 1. all_subsolid=false and all_solid=true remain separate clinician-attested facts and are never inferred."
+  },
+  "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
+  "conditions": [
+    {
+      "field": "assessment_context",
+      "op": "eq",
+      "value": "incidental"
+    },
+    {
+      "field": "assessment_timepoint",
+      "op": "eq",
+      "value": "initial"
+    },
+    {
+      "field": "nodule_count",
+      "op": "gte",
+      "value": 2
+    },
+    {
+      "field": "multiple_nodules_all_subsolid",
+      "op": "eq",
+      "value": false
+    },
+    {
+      "field": "multiple_nodules_all_solid",
+      "op": "eq",
+      "value": true
+    },
+    {
+      "field": "multiple_nodules_discrete_circumscribed",
+      "op": "eq",
+      "value": true
+    },
+    {
+      "field": "fleischner_multiple_solid_all_lt_6mm",
+      "op": "eq",
+      "value": true
+    }
+  ]
+}
