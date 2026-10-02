@@ -147,7 +147,6 @@ export const multipleSubsolidFleischnerFields: FieldDef[] = [
 export const FLEISCHNER_MULTIPLE_SUBSOLID_MEASUREMENT_HELP_TEXT =
   "When determining whether any subsolid nodule is 6 mm or larger, use the established Fleischner whole-nodule diameter convention: average the long- and short-axis diameters and round to the nearest whole millimeter.";
 
-
 /** issue #16 Candidate B: source-neutral multiple-solid set membership. */
 export const multipleSolidSetField: FieldDef = {
   id: "multiple_nodules_all_solid",

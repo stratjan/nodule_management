@@ -210,19 +210,12 @@
     {
       "ruleId": "GR-6",
       "revisionId": "GR-6-r1",
-      "kind": "pathway-gate",
       "approvalStatus": "Approved",
       "approvalEvent": {
         "by": "stratjan",
         "at": "2026-09-30"
       },
-      "provenance": {
-        "sourceDocument": "GitHub issue #16 (Clinical/Product HITL sign-off 5917098959; risk clarification 5917117015; architecture sign-off 5917524561 on #37; final spec 5917726111; readiness sign-off 5917894328)",
-        "version": "issue #16 Candidate B final spec",
-        "originalLanguage": "English",
-        "sourceType": "Clinically-approved specification",
-        "locator": "Candidate B boundary: incidental, initial, multiple solid-only discrete/circumscribed nodules, all <6 mm; GR-5/GR-6 exclusivity condition approved in readiness 5917894328 item 1. all_subsolid=false and all_solid=true remain separate clinician-attested facts and are never inferred."
-      },
+      "kind": "pathway-gate",
       "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
       "conditions": [
         {
@@ -260,7 +253,14 @@
           "op": "eq",
           "value": true
         }
-      ]
+      ],
+      "provenance": {
+        "sourceDocument": "GitHub issue #16 (Clinical/Product HITL sign-off 5917098959; risk clarification 5917117015; architecture sign-off 5917524561 on #37; final spec 5917726111; readiness sign-off 5917894328)",
+        "version": "issue #16 Candidate B final spec",
+        "originalLanguage": "English",
+        "sourceType": "Clinically-approved specification",
+        "locator": "Candidate B boundary: incidental, initial, multiple solid-only discrete/circumscribed nodules, all <6 mm; GR-5/GR-6 exclusivity condition approved in readiness 5917894328 item 1. all_subsolid=false and all_solid=true remain separate clinician-attested facts and are never inferred."
+      }
     },
     {
       "ruleId": "SAR-S3",
@@ -1137,13 +1137,24 @@
     {
       "ruleId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-LOW-RISK",
       "revisionId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-LOW-RISK-r1",
-      "kind": "atomic-clinical-rule",
-      "recommendationSourceId": "fleischner",
-      "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
       "approvalStatus": "Approved",
       "approvalEvent": {
         "by": "stratjan",
         "at": "2026-09-30"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
+      "conditions": [
+        {
+          "field": "fleischner_multiple_solid_risk_category",
+          "op": "eq",
+          "value": "low"
+        }
+      ],
+      "recommendation": {
+        "noRoutineFollowUp": true,
+        "rationale": "Fleischner (2017) Recommendation 2 and Table 1A recommend no routine follow-up for multiple solid noncalcified pulmonary nodules found incidentally that are all smaller than 6 mm, in a patient at low risk — in a patient >=35 years old with no known malignancy history and not immunocompromised. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with all nodules smaller than 6 mm by the Fleischner whole-nodule average-diameter convention. The low-risk category is the clinician's explicit Fleischner risk decision (Fleischner low risk: estimated cancer risk below 5%); this application does not calculate, score, weight, or infer it from age, smoking exposure, nodule size or margins, location, or any other input. No index, largest, dominant, or most-suspicious nodule is selected by this application. Multiple solid nodules with any nodule 6 mm or larger, CT follow-up at 3-6 or 18-24 months, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from this recommendation."
       },
       "provenanceAnchors": [
         {
@@ -1176,29 +1187,37 @@
             "locator": "General nodule measurement note: use the average of long- and short-axis diameters rounded to the nearest whole millimeter. This convention governs the clinician's set-level all-<6-mm attestation; no per-lesion engine measurement or volume-equivalent logic is introduced."
           }
         }
-      ],
-      "conditions": [
-        {
-          "field": "fleischner_multiple_solid_risk_category",
-          "op": "eq",
-          "value": "low"
-        }
-      ],
-      "recommendation": {
-        "noRoutineFollowUp": true,
-        "rationale": "Fleischner (2017) Recommendation 2 and Table 1A recommend no routine follow-up for multiple solid noncalcified pulmonary nodules found incidentally that are all smaller than 6 mm, in a patient at low risk — in a patient >=35 years old with no known malignancy history and not immunocompromised. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with all nodules smaller than 6 mm by the Fleischner whole-nodule average-diameter convention. The low-risk category is the clinician's explicit Fleischner risk decision (Fleischner low risk: estimated cancer risk below 5%); this application does not calculate, score, weight, or infer it from age, smoking exposure, nodule size or margins, location, or any other input. No index, largest, dominant, or most-suspicious nodule is selected by this application. Multiple solid nodules with any nodule 6 mm or larger, CT follow-up at 3-6 or 18-24 months, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from this recommendation."
-      }
+      ]
     },
     {
       "ruleId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK",
       "revisionId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK-r1",
-      "kind": "atomic-clinical-rule",
-      "recommendationSourceId": "fleischner",
-      "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
       "approvalStatus": "Approved",
       "approvalEvent": {
         "by": "stratjan",
         "at": "2026-09-30"
+      },
+      "kind": "atomic-clinical-rule",
+      "recommendationSourceId": "fleischner",
+      "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
+      "conditions": [
+        {
+          "field": "fleischner_multiple_solid_risk_category",
+          "op": "eq",
+          "value": "high"
+        }
+      ],
+      "recommendation": {
+        "considerAction": {
+          "label": "CT",
+          "timing": {
+            "kind": "specified",
+            "intervals": [
+              "12 months"
+            ]
+          }
+        },
+        "rationale": "Fleischner (2017) Recommendation 2 and Table 1A state that, for multiple solid noncalcified pulmonary nodules found incidentally that are all smaller than 6 mm, CT at 12 months may be considered in a patient at high risk — in a patient >=35 years old with no known malignancy history and not immunocompromised. The source presents this CT as optional, not as a mandatory follow-up; whether to perform it remains the clinician's decision. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with all nodules smaller than 6 mm by the Fleischner whole-nodule average-diameter convention. The high-risk category is the clinician's explicit Fleischner risk decision (Fleischner high risk: the combined intermediate- and high-risk categories, estimated cancer risk 5% or more); this application does not calculate, score, weight, or infer it from age, smoking exposure, nodule size or margins, location, or any other input. No index, largest, dominant, or most-suspicious nodule is selected by this application. Multiple solid nodules with any nodule 6 mm or larger, CT follow-up at 3-6 or 18-24 months, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from this recommendation."
       },
       "provenanceAnchors": [
         {
@@ -1231,26 +1250,7 @@
             "locator": "General nodule measurement note: use the average of long- and short-axis diameters rounded to the nearest whole millimeter. This convention governs the clinician's set-level all-<6-mm attestation; no per-lesion engine measurement or volume-equivalent logic is introduced."
           }
         }
-      ],
-      "conditions": [
-        {
-          "field": "fleischner_multiple_solid_risk_category",
-          "op": "eq",
-          "value": "high"
-        }
-      ],
-      "recommendation": {
-        "considerAction": {
-          "label": "CT",
-          "timing": {
-            "kind": "specified",
-            "intervals": [
-              "12 months"
-            ]
-          }
-        },
-        "rationale": "Fleischner (2017) Recommendation 2 and Table 1A state that, for multiple solid noncalcified pulmonary nodules found incidentally that are all smaller than 6 mm, CT at 12 months may be considered in a patient at high risk — in a patient >=35 years old with no known malignancy history and not immunocompromised. The source presents this CT as optional, not as a mandatory follow-up; whether to perform it remains the clinician's decision. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with all nodules smaller than 6 mm by the Fleischner whole-nodule average-diameter convention. The high-risk category is the clinician's explicit Fleischner risk decision (Fleischner high risk: the combined intermediate- and high-risk categories, estimated cancer risk 5% or more); this application does not calculate, score, weight, or infer it from age, smoking exposure, nodule size or margins, location, or any other input. No index, largest, dominant, or most-suspicious nodule is selected by this application. Multiple solid nodules with any nodule 6 mm or larger, CT follow-up at 3-6 or 18-24 months, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from this recommendation."
-      }
+      ]
     }
   ]
 }

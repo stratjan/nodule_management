@@ -941,7 +941,6 @@ describe("issue #30: nonBlockingUnresolvedSiblings schema constraints", () => {
   });
 });
 
-
 describe("issue #16 Candidate B: consider-action recommendation form", () => {
   const highPath = join(
     repoRoot,
@@ -984,6 +983,25 @@ describe("issue #16 Candidate B: consider-action recommendation form", () => {
         recommendation: {
           considerAction: { label: "", timing: { kind: "specified", intervals: ["12 months"] } },
           rationale: "x",
+        },
+      },
+      // case 45: a second, plural key alongside the single action
+      { ...high, recommendation: { ...high.recommendation, considerActions: [high.recommendation.considerAction] } },
+      // case 46: consider-action mixed with the legacy and persistence-surveillance forms
+      { ...high, recommendation: { ...high.recommendation, clinicalEndpoint: "CT", intervals: ["12 months"] } },
+      {
+        ...high,
+        recommendation: {
+          ...high.recommendation,
+          persistenceConfirmation: { label: "CT", timing: { kind: "specified", intervals: ["3 months"] } },
+        },
+      },
+      // case 46b: no strength/rank/priority key may ride on the action itself
+      {
+        ...high,
+        recommendation: {
+          ...high.recommendation,
+          considerAction: { ...high.recommendation.considerAction, priority: "high" },
         },
       },
     ];

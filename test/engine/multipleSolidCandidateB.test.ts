@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { evaluate, AmbiguousPathwayMatchError, ENGINE_VERSION, SCHEMA_VERSION } from "../../src/engine/evaluate";
+import { evaluate, ENGINE_VERSION, SCHEMA_VERSION } from "../../src/engine/evaluate";
 import {
   isConsiderActionRecommendation,
   isNoRoutineFollowUpRecommendation,
@@ -67,12 +67,29 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     }
   });
 
-  it("GR-5 and GR-6 never both match even under contradictory stale set facts", () => {
-    expect(() => evaluate({
+  it("case 5: >=6 mm with a supplied high risk -> zero Source Evaluation Outcomes (risk never consulted)", () => {
+    const trace = evaluate(
+      { ...base, fleischner_multiple_solid_all_lt_6mm: false, fleischner_multiple_solid_risk_category: "high" },
+      release,
+    );
+    expect(trace.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
+    expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
+    expect(trace.recommendationSet).toEqual([]);
+  });
+
+  it("case 3b: contradictory stale input (all_subsolid and all_solid both true) -> GR-5 alone governs; GR-6 NOT_MATCHED", () => {
+    const trace = evaluate({
       ...base,
       multiple_nodules_all_subsolid: true,
       fleischner_multiple_subsolid_any_gte_6mm: true,
-    }, release)).not.toThrow(AmbiguousPathwayMatchError);
+      fleischner_multiple_solid_risk_category: "high",
+    }, release);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-multiple-subsolid-initial",
+    });
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
+    expect(trace.recommendationSet.map((r) => r.matchedRuleId)).toEqual(["ACR-FLEISCHNER-MULTIPLE-SUBSOLID-INITIAL"]);
   });
 
   it("each required GR-6 fact absent is INSUFFICIENT_INPUT unless another supplied fact already contradicts", () => {
@@ -86,7 +103,9 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
       delete input[field];
       const trace = evaluate(input, release);
       expect(trace.pathwaySelection.state).toBe("INSUFFICIENT_INPUT");
-      expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("INDETERMINATE");
+      const gate = trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6");
+      expect(gate?.state).toBe("INDETERMINATE");
+      expect(gate?.missingFields).toEqual([field]);
     }
 
     const contradicted: ClinicalInputState = { ...base };
@@ -140,8 +159,11 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     expect(fleischner(trace)?.state).toBe("RECOMMENDATION");
     expect(rec.matchedRuleId).toBe("ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-LOW-RISK");
     expect(isNoRoutineFollowUpRecommendation(rec)).toBe(true);
-    expect(rec).not.toHaveProperty("considerAction");
-    expect(rec).not.toHaveProperty("actions");
+    expect(rec.clinicalCriterionUsed).toBe("clinician-attestation");
+    expect(fleischner(trace)).not.toHaveProperty("toleratedUnresolvedSiblings");
+    for (const key of ["considerAction", "actions", "clinicalEndpoint", "intervals", "persistenceConfirmation", "ifPersistent"]) {
+      expect(rec).not.toHaveProperty(key);
+    }
   });
 
   it("high risk -> exactly one optional CT at 12 months", () => {
@@ -155,8 +177,17 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
       label: "CT",
       timing: { kind: "specified", intervals: ["12 months"] },
     });
-    expect(rec).not.toHaveProperty("actions");
-    expect(rec).not.toHaveProperty("noRoutineFollowUp");
+    expect(rec.clinicalCriterionUsed).toBe("clinician-attestation");
+    expect(fleischner(trace)).not.toHaveProperty("toleratedUnresolvedSiblings");
+    for (const key of ["actions", "noRoutineFollowUp", "clinicalEndpoint", "intervals", "persistenceConfirmation", "ifPersistent"]) {
+      expect(rec).not.toHaveProperty(key);
+    }
+  });
+
+  it("case 15: the public input contract rejects a non-member risk category at type level", () => {
+    // @ts-expect-error -- FleischnerRiskCategory is closed to "low" | "high".
+    const invalid: ClinicalInputState = { fleischner_multiple_solid_risk_category: "medium" };
+    expect(invalid.fleischner_multiple_solid_risk_category).toBe("medium");
   });
 
   it("a forcibly injected invalid risk category never recommends", () => {
@@ -209,6 +240,25 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
       expect(fleischner(trace)?.state).toBe("INSUFFICIENT_INPUT");
       expect(trace.recommendationSet).toEqual([]);
     }
+  });
+
+  it("case 26: low/high outcomes are identical across ages -- only the attested category drives matching", () => {
+    for (const risk of ["low", "high"] as const) {
+      const [young, old] = [40, 80].map((age) =>
+        fleischner(evaluate({ ...base, age, fleischner_multiple_solid_risk_category: risk }, release)),
+      );
+      expect(young?.state).toBe("RECOMMENDATION");
+      expect(old).toEqual(young);
+    }
+  });
+
+  it("case 26: ClinicalInputState gains no smoking, margin, location, or score field", () => {
+    const types = readFileSync(join(repoRoot, "src/engine/types.ts"), "utf-8");
+    const start = types.indexOf("export interface ClinicalInputState {");
+    const inputState = types.slice(start, types.indexOf("\n}", start));
+    const fieldNames = [...inputState.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]);
+    expect(fieldNames).toContain("fleischner_multiple_solid_risk_category");
+    expect(fieldNames.filter((name) => /smok|margin|spicul|lobe|location|score|weight|pack_year/i.test(name))).toEqual([]);
   });
 
   it("governed GR-6 and both ACRs have the exact approved identities, conditions, anchors, and rationales", () => {

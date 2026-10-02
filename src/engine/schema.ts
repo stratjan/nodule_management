@@ -146,7 +146,8 @@ const persistenceSurveillanceRecommendationContentSchema = z
   })
   .strict();
 
-// issue #16 Candidate B: one source-stated optional action with definite timing.
+// issue #16 Candidate B: pinned to "specified" with non-empty intervals, like the persistence
+// steps -- the source states the timing definitely; only performing the action is optional.
 const considerActionTimingSchema = z
   .object({ kind: z.literal("specified"), intervals: z.array(z.string().min(1)).min(1) })
   .strict();
@@ -155,6 +156,8 @@ const considerActionSchema = z
   .object({ label: z.string().min(1), timing: considerActionTimingSchema })
   .strict();
 
+// issue #16 Candidate B: exactly one optional ("may be considered") action -- an object, never an
+// array, so a second action is structurally unrepresentable.
 const considerActionRecommendationContentSchema = z
   .object({ considerAction: considerActionSchema, rationale: z.string().min(1) })
   .strict();

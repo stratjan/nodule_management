@@ -503,8 +503,8 @@ describe("F4 clinician-facing wording (issue #16 implementation-readiness sign-o
   });
 });
 
-
-describe("issue #16 Candidate B workflow/reset", () => {  const validB: ClinicalInputState = {
+describe("issue #16 Candidate B workflow/reset", () => {
+  const validB: ClinicalInputState = {
     assessment_context: "incidental",
     assessment_timepoint: "initial",
     nodule_count: 3,
@@ -593,5 +593,93 @@ describe("issue #16 Candidate B workflow/reset", () => {  const validB: Clinical
     const left = edit(validB, "assessment_timepoint", "follow-up");
     const back = edit(left, "assessment_timepoint", "initial");
     expect(back.fleischner_multiple_solid_risk_category).toBeUndefined();
+  });
+
+  it("case 37: count 1 -> 3 from a full solitary state clears solitary morphology/measurement/GR-4 fields", () => {
+    const solitary: ClinicalInputState = {
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      nodule_morphology: "solid",
+      nodule_size_mm: 7,
+      nodule_volume_mm3: 150,
+      s3_volume_stability_criterion_met: true,
+      s3_vdt_days: 700,
+    };
+    const multiple = edit(solitary, "nodule_count", 3);
+    for (const key of ["nodule_morphology", "nodule_size_mm", "nodule_volume_mm3", "s3_volume_stability_criterion_met", "s3_vdt_days"] as const) {
+      expect(multiple[key]).toBeUndefined();
+    }
+  });
+
+  it("cases 38/39: crossing A <-> B keeps the source-neutral discrete/circumscribed fact", () => {
+    const a: ClinicalInputState = {
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      nodule_count: 3,
+      multiple_nodules_all_subsolid: true,
+      multiple_nodules_discrete_circumscribed: true,
+      fleischner_multiple_subsolid_any_gte_6mm: false,
+    };
+    expect(edit(a, "multiple_nodules_all_subsolid", false).multiple_nodules_discrete_circumscribed).toBe(true);
+    expect(edit(validB, "multiple_nodules_all_subsolid", true).multiple_nodules_discrete_circumscribed).toBe(true);
+  });
+
+  it("case 40: all_solid -> false clears B-F3 as well as risk; the other exits keep B-F1/B-F3", () => {
+    const mixed = edit(validB, "multiple_nodules_all_solid", false);
+    expect(mixed.fleischner_multiple_solid_all_lt_6mm).toBeUndefined();
+    expect(mixed.fleischner_multiple_solid_risk_category).toBeUndefined();
+    for (const [id, value] of [
+      ["assessment_context", "screening"],
+      ["assessment_timepoint", "follow-up"],
+      ["multiple_nodules_discrete_circumscribed", false],
+    ] as const) {
+      const left = edit(validB, id, value);
+      expect(left.multiple_nodules_all_solid).toBe(true);
+      expect(left.fleischner_multiple_solid_all_lt_6mm).toBe(true);
+    }
+  });
+
+  it("case 41: no exit route resurrects risk on re-entering the exact B shape, including 3 -> 1 -> 3", () => {
+    for (const [id, leave, back] of [
+      ["assessment_context", "screening", "incidental"],
+      ["assessment_timepoint", "follow-up", "initial"],
+      ["multiple_nodules_discrete_circumscribed", false, true],
+      ["fleischner_multiple_solid_all_lt_6mm", false, true],
+    ] as const) {
+      const reentered = edit(edit(validB, id, leave), id, back);
+      expect(isMultipleSolidLt6mmShape(reentered)).toBe(true);
+      expect(reentered.fleischner_multiple_solid_risk_category).toBeUndefined();
+    }
+    const viaSolid = edit(edit(edit(validB, "multiple_nodules_all_solid", false), "multiple_nodules_all_solid", true),
+      "fleischner_multiple_solid_all_lt_6mm", true);
+    expect(isMultipleSolidLt6mmShape(viaSolid)).toBe(true);
+    expect(viaSolid.fleischner_multiple_solid_risk_category).toBeUndefined();
+
+    const viaSolitary = edit(edit(validB, "nodule_count", 1), "nodule_count", 3);
+    for (const key of [
+      "multiple_nodules_all_subsolid",
+      "multiple_nodules_all_solid",
+      "multiple_nodules_discrete_circumscribed",
+      "fleischner_multiple_solid_all_lt_6mm",
+      "fleischner_multiple_solid_risk_category",
+    ] as const) {
+      expect(viaSolitary[key]).toBeUndefined();
+    }
+  });
+
+  it("case 41b: count 3 -> 4, risk edits, re-affirming B facts, and applicability edits clear nothing", () => {
+    for (const [id, value] of [
+      ["nodule_count", 4],
+      ["fleischner_multiple_solid_risk_category", "low"],
+      ["multiple_nodules_all_solid", true],
+      ["fleischner_multiple_solid_all_lt_6mm", true],
+      ["multiple_nodules_discrete_circumscribed", true],
+      ["age", 70],
+      ["known_malignancy_history", false],
+      ["immunocompromised", false],
+    ] as const) {
+      expect(edit(validB, id, value)).toEqual({ ...validB, [id]: value });
+    }
   });
 });

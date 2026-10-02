@@ -232,14 +232,22 @@ export interface PersistenceSurveillanceRecommendationContent {
   rationale: string;
 }
 
-/** issue #16 Candidate B: exactly one source-stated action whose performance is optional while
- * its timing remains explicitly specified. */
+/** issue #16 Candidate B: the single action of a ConsiderActionRecommendationContent. Timing is
+ * pinned to the "specified" form with non-empty intervals -- the source states the timing
+ * definitely; only the performing of the action is optional. */
 export interface ConsiderAction {
   label: string;
   timing: { kind: "specified"; intervals: string[] };
 }
 
-/** issue #16 Candidate B / #37: closed sibling form for a single "may be considered" action. */
+/**
+ * issue #16 Candidate B (#37 architecture sign-off 5917524561): a small, closed sibling form for
+ * exactly one source-stated fact pattern -- one action the source says "may be considered" / is
+ * optional. The `considerAction` key itself is the machine-readable optional marker: its presence
+ * means the action is optional by source wording, never mandatory. Exactly one action, never a
+ * list; not a recommendation-strength scale, evidence grade, rank, priority, probability, or
+ * branching language, and never extended to other modalities without a new, equally-scoped review.
+ */
 export interface ConsiderActionRecommendationContent {
   considerAction: ConsiderAction;
   rationale: string;
