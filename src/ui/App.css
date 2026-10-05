@@ -198,3 +198,21 @@ button:disabled {
   overflow-x: auto;
   font-size: 0.75rem;
 }
+
+.optional-qualifier {
+  color: #57606a;
+  font-style: italic;
+}
+
+.decision-support {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.decision-support h3 {
+  margin-top: 0;
+  font-size: 0.95rem;
+}

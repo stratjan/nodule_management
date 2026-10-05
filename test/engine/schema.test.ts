@@ -33,6 +33,9 @@ const RULE_FILES = [
   "clinical/rules/recommendations/s3-followup-discharge-volume-or-vdt.json",
   "clinical/rules/pathway/gr-5-incidental-multiple-subsolid-initial.json",
   "clinical/rules/recommendations/fleischner-multiple-subsolid-initial.json",
+  "clinical/rules/pathway/gr-6-incidental-multiple-solid-lt-6mm-initial.json",
+  "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-low-risk.json",
+  "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-high-risk.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {
@@ -935,5 +938,73 @@ describe("issue #30: nonBlockingUnresolvedSiblings schema constraints", () => {
     for (const relativePath of RULE_FILES) {
       expect(() => ruleRevisionSchema.parse(loadRaw(relativePath))).not.toThrow();
     }
+  });
+});
+
+describe("issue #16 Candidate B: consider-action recommendation form", () => {
+  const highPath = join(
+    repoRoot,
+    "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-high-risk.json",
+  );
+  const high = JSON.parse(readFileSync(highPath, "utf-8"));
+
+  it("accepts the governed single considerAction with specified timing", () => {
+    expect(() => ruleRevisionSchema.parse(high)).not.toThrow();
+  });
+
+  it("rejects absent, multiple/plural, mixed-form, empty, and not-specified consider actions", () => {
+    const variants = [
+      { ...high, recommendation: { rationale: "x" } },
+      {
+        ...high,
+        recommendation: {
+          considerAction: [high.recommendation.considerAction, high.recommendation.considerAction],
+          rationale: "x",
+        },
+      },
+      { ...high, recommendation: { ...high.recommendation, actions: [] } },
+      { ...high, recommendation: { ...high.recommendation, noRoutineFollowUp: true } },
+      {
+        ...high,
+        recommendation: {
+          considerAction: { label: "CT", timing: { kind: "specified", intervals: [] } },
+          rationale: "x",
+        },
+      },
+      {
+        ...high,
+        recommendation: {
+          considerAction: { label: "CT", timing: { kind: "not-specified-by-source" } },
+          rationale: "x",
+        },
+      },
+      {
+        ...high,
+        recommendation: {
+          considerAction: { label: "", timing: { kind: "specified", intervals: ["12 months"] } },
+          rationale: "x",
+        },
+      },
+      // case 45: a second, plural key alongside the single action
+      { ...high, recommendation: { ...high.recommendation, considerActions: [high.recommendation.considerAction] } },
+      // case 46: consider-action mixed with the legacy and persistence-surveillance forms
+      { ...high, recommendation: { ...high.recommendation, clinicalEndpoint: "CT", intervals: ["12 months"] } },
+      {
+        ...high,
+        recommendation: {
+          ...high.recommendation,
+          persistenceConfirmation: { label: "CT", timing: { kind: "specified", intervals: ["3 months"] } },
+        },
+      },
+      // case 46b: no strength/rank/priority key may ride on the action itself
+      {
+        ...high,
+        recommendation: {
+          ...high.recommendation,
+          considerAction: { ...high.recommendation.considerAction, priority: "high" },
+        },
+      },
+    ];
+    for (const raw of variants) expect(() => ruleRevisionSchema.parse(raw)).toThrow();
   });
 });

@@ -1,0 +1,63 @@
+{
+  "ruleId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK",
+  "revisionId": "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-multiple-solid-lt-6mm-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-09-30"
+  },
+  "provenanceAnchors": [
+    {
+      "role": "primary-management",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Table 1A (Solid Nodules), multiple-nodule <6 mm high-risk cell and Recommendation 2: CT at 12 months may be considered. Optionality is preserved explicitly and is not converted into a mandatory CT action."
+      }
+    },
+    {
+      "role": "risk-category",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Risk Estimation and Risk Models: low risk is estimated cancer risk <5%; high risk combines ACCP intermediate (5-65%) and high (>65%) categories. Relevant factors include age, smoking exposure, nodule size, margin morphology, and upper-lobe location. No deterministic calculator is implemented; the category is clinician-attested per #16 comments 5917098959 and 5917117015."
+      }
+    },
+    {
+      "role": "whole-nodule-measurement",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "General nodule measurement note: use the average of long- and short-axis diameters rounded to the nearest whole millimeter. This convention governs the clinician's set-level all-<6-mm attestation; no per-lesion engine measurement or volume-equivalent logic is introduced."
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "field": "fleischner_multiple_solid_risk_category",
+      "op": "eq",
+      "value": "high"
+    }
+  ],
+  "recommendation": {
+    "considerAction": {
+      "label": "CT",
+      "timing": {
+        "kind": "specified",
+        "intervals": [
+          "12 months"
+        ]
+      }
+    },
+    "rationale": "Fleischner (2017) Recommendation 2 and Table 1A state that, for multiple solid noncalcified pulmonary nodules found incidentally that are all smaller than 6 mm, CT at 12 months may be considered in a patient at high risk — in a patient >=35 years old with no known malignancy history and not immunocompromised. The source presents this CT as optional, not as a mandatory follow-up; whether to perform it remains the clinician's decision. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with all nodules smaller than 6 mm by the Fleischner whole-nodule average-diameter convention. The high-risk category is the clinician's explicit Fleischner risk decision (Fleischner high risk: the combined intermediate- and high-risk categories, estimated cancer risk 5% or more); this application does not calculate, score, weight, or infer it from age, smoking exposure, nodule size or margins, location, or any other input. No index, largest, dominant, or most-suspicious nodule is selected by this application. Multiple solid nodules with any nodule 6 mm or larger, CT follow-up at 3-6 or 18-24 months, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from this recommendation."
+  }
+}
