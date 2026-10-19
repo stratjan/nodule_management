@@ -32,7 +32,8 @@ export interface BooleanFieldDef {
     | "multiple_nodules_discrete_circumscribed"
     | "fleischner_multiple_subsolid_any_gte_6mm"
     | "multiple_nodules_all_solid"
-    | "fleischner_multiple_solid_all_lt_6mm";
+    | "fleischner_multiple_solid_all_lt_6mm"
+    | "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management";
   label: string;
   type: "boolean";
 }
@@ -187,3 +188,28 @@ export const FLEISCHNER_MULTIPLE_SOLID_RISK_DECISION_SUPPORT = {
 
 export const FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE =
   "Fleischner notes that this pathway may not apply unchanged when there is a known or suspected primary neoplasm that could be a source of metastatic disease, or when there is clinical evidence of active infection; those contexts may require different individualized management.";
+
+/** Step 2, GR-7 shape only (issue #16 Candidate C, HITL 6262113321 HITL 3/4): the single
+ * clinician confirmation of the binding governing-nodule safeguard. Confirmation-shaped -- only
+ * "Yes" unlocks the recommendation; an unanswered value is an intended Fleischner
+ * INSUFFICIENT_INPUT outcome, not a blocked evaluation. Never phrased as "there is no dominant
+ * nodule". No Fleischner risk field is asked on this pathway. */
+export const multipleSolidGte6mmSafeguardFields: FieldDef[] = [
+  {
+    id: "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management",
+    label:
+      "Fleischner: I confirm that no individual larger / more suspicious nodule currently requires management according to the Fleischner solitary-nodule recommendations instead of this bounded multiple-nodule pathway (Yes = confirmed; No = not confirmed)",
+    type: "boolean",
+  },
+];
+
+/** issue #16 Candidate C (HITL 3): neutral help text -- explains the source's governing-nodule
+ * clause without enumerating or executing any alternative solitary-nodule action. */
+export const FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT =
+  "Fleischner 2017 notes that, when multiple solid nodules are present, management may be guided by a larger or more suspicious nodule according to its solitary-nodule recommendations. The most suspicious nodule is not necessarily the largest. This app does not identify, rank, or select any individual nodule; whether such a nodule requires solitary-nodule management is your clinical judgment.";
+
+/** issue #16 Candidate C (HITL 4; readiness 6268250838 clarification 2): neutral notice shown in
+ * Step 2 and on the Results page when the safeguard is not confirmed. Explanatory only -- no
+ * redirect, no solitary evaluation, no lesion identity, no alternative management. */
+export const FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE =
+  "Solitary-nodule-directed management is outside this bounded multiple-nodule pathway and is not evaluated here.";

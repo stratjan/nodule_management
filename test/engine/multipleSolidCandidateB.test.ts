@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { evaluate, ENGINE_VERSION, SCHEMA_VERSION } from "../../src/engine/evaluate";
+import { evaluate } from "../../src/engine/evaluate";
 import {
   isConsiderActionRecommendation,
   isNoRoutineFollowUpRecommendation,
@@ -55,11 +55,12 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("INDETERMINATE");
   });
 
-  it("mixed, disseminated, >=6, screening and follow-up states fail closed", () => {
+  // issue #16 Candidate C: the >=6 mm state (all_lt_6mm=false) is no longer a fail-closed state --
+  // it is the GR-7 pathway (see case 5 below and multipleSolidCandidateC.test.ts).
+  it("mixed, disseminated, screening and follow-up states fail closed", () => {
     for (const override of [
       { multiple_nodules_all_solid: false },
       { multiple_nodules_discrete_circumscribed: false },
-      { fleischner_multiple_solid_all_lt_6mm: false },
       { assessment_context: "screening" },
       { assessment_timepoint: "follow-up" },
     ]) {
@@ -67,13 +68,22 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     }
   });
 
-  it("case 5: >=6 mm with a supplied high risk -> zero Source Evaluation Outcomes (risk never consulted)", () => {
+  it("case 5 (updated for #16 Candidate C): >=6 mm with a stray high risk -> GR-7 MATCHED, Fleischner INSUFFICIENT_INPUT on the safeguard (risk never consulted)", () => {
     const trace = evaluate(
       { ...base, fleischner_multiple_solid_all_lt_6mm: false, fleischner_multiple_solid_risk_category: "high" },
       release,
     );
-    expect(trace.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
-    expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
+    expect(trace.pathwaySelection).toEqual({
+      state: "MATCHED",
+      clinicalPathwayId: "incidental-multiple-solid-gte-6mm-initial",
+    });
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
+    expect(trace.sourceEvaluationOutcomes.map((o) => o.recommendationSourceId)).toEqual(["fleischner"]);
+    expect(fleischner(trace)?.state).toBe("INSUFFICIENT_INPUT");
+    expect(fleischner(trace)?.reason).toContain(
+      "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management",
+    );
+    expect(fleischner(trace)?.reason).not.toContain("fleischner_multiple_solid_risk_category");
     expect(trace.recommendationSet).toEqual([]);
   });
 
@@ -108,13 +118,21 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
       expect(gate?.missingFields).toEqual([field]);
     }
 
+    // issue #16 Candidate C (final spec §10 change 2): all_lt_6mm=false contradicts GR-6, but GR-7
+    // remains legitimately INDETERMINATE on the missing all_solid fact -- INSUFFICIENT_INPUT, no
+    // longer NO_PATHWAY_MATCHED.
     const contradicted: ClinicalInputState = { ...base };
     delete contradicted.multiple_nodules_all_solid;
     contradicted.fleischner_multiple_solid_all_lt_6mm = false;
-    expect(evaluate(contradicted, release).pathwaySelection.state).toBe("NO_PATHWAY_MATCHED");
+    const contradictedTrace = evaluate(contradicted, release);
+    expect(contradictedTrace.pathwaySelection.state).toBe("INSUFFICIENT_INPUT");
+    expect(contradictedTrace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
+    const gr7 = contradictedTrace.clinicalPathwayGates.find((g) => g.ruleId === "GR-7");
+    expect(gr7?.state).toBe("INDETERMINATE");
+    expect(gr7?.missingFields).toEqual(["multiple_nodules_all_solid"]);
   });
 
-  it("exhaustive GR-1..GR-6 sweep never produces more than one matched pathway", () => {
+  it("exhaustive GR-1..GR-7 sweep never produces more than one matched pathway; GR-6 and GR-7 never co-match", () => {
     const tri = [true, false, undefined] as const;
     const counts = [1, 2, 3];
     const timepoints = ["initial", "follow-up", undefined] as const;
@@ -138,9 +156,11 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
                     ...(nodule_morphology === undefined ? {} : { nodule_morphology }),
                   };
                   const trace = evaluate(input, release);
-                  expect(
-                    trace.clinicalPathwayGates.filter((g) => g.state === "MATCHED").length,
-                  ).toBeLessThanOrEqual(1);
+                  const matched = trace.clinicalPathwayGates
+                    .filter((g) => g.state === "MATCHED")
+                    .map((g) => g.ruleId);
+                  expect(matched.length).toBeLessThanOrEqual(1);
+                  expect(matched.includes("GR-6") && matched.includes("GR-7")).toBe(false);
                   combinations++;
                 }
     expect(combinations).toBe(1458);
@@ -315,9 +335,12 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     expect(JSON.stringify(sar.conditions)).not.toMatch(/multiple_nodules_all_solid|fleischner_multiple_solid/);
   });
 
-  it("uses versions 1.8.0 and assembles exactly 21 revisions", () => {
-    expect(ENGINE_VERSION).toBe("1.8.0");
-    expect(SCHEMA_VERSION).toBe("1.8.0");
-    expect(release.revisions).toHaveLength(21);
+  // issue #16 Candidate C: the version / revision-count assertion moved to
+  // multipleSolidCandidateC.test.ts; Candidate B asserts only its own identity in the Release.
+  it("the assembled Release still carries GR-6-r1 and both Candidate-B ACRs", () => {
+    const revisionIds = release.revisions.map((r) => r.revisionId);
+    expect(revisionIds).toContain("GR-6-r1");
+    expect(revisionIds).toContain("ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-LOW-RISK-r1");
+    expect(revisionIds).toContain("ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK-r1");
   });
 });

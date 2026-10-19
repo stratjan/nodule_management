@@ -16,10 +16,11 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSource = readFileSync(join(__dirname, "../../src/ui/App.tsx"), "utf-8").replace(/\r\n/g, "\n");
 
-/** The Candidate-B step-2 block: from its shape guard up to the measurement block that follows it. */
+/** The Candidate-B step-2 block: from its shape guard up to the Candidate-C step-2 block that
+ * follows it (issue #16 Candidate C). */
 function candidateBStep2Block(): string {
   const start = appSource.indexOf("{multipleSolidLt6mmShape && (");
-  const end = appSource.indexOf("{!isFollowUpTimepoint && !multipleSubsolidShape && !multipleSolidLt6mmShape && (");
+  const end = appSource.indexOf("{multipleSolidGte6mmShape && (");
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return appSource.slice(start, end);

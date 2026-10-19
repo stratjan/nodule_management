@@ -16,6 +16,9 @@ import {
   multipleSolidFleischnerRiskFields,
   FLEISCHNER_MULTIPLE_SOLID_MEASUREMENT_HELP_TEXT,
   FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE,
+  multipleSolidGte6mmSafeguardFields,
+  FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT,
+  FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE,
 } from "../workflow/fields";
 import type { FieldDef } from "../workflow/fields";
 import {
@@ -24,7 +27,9 @@ import {
   canContinuePastPathwayStep,
   isMultipleSubsolidShape,
   isMultipleSolidLt6mmShape,
+  isMultipleSolidGte6mmShape,
   pathwayStepOutOfScopeReason,
+  showsSolitarySafeguardNotConfirmedNotice,
 } from "../workflow/pathwayNavigation";
 import type { PathwayStepOutOfScopeReason } from "../workflow/pathwayNavigation";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
@@ -55,8 +60,6 @@ const OUT_OF_SCOPE_NOTICES: Record<PathwayStepOutOfScopeReason, string> = {
     "Sets mixing fully solid and subsolid nodules are not covered by this Rule-Set Release.",
   "multiple-disseminated":
     "Disseminated, diffuse, miliary, or metastatic-pattern presentations are outside this tool's scope.",
-  "multiple-solid-gte-6mm":
-    "Multiple solid nodules with at least one nodule 6 mm or larger are not yet covered by this Rule-Set Release.",
 };
 
 // issue #16 Candidate A: nodule_count is asked first so the solitary/multiple branch is known
@@ -169,6 +172,9 @@ export function App() {
   // size-state question.
   const multipleSubsolidShape = isMultipleSubsolidShape(input);
   const multipleSolidLt6mmShape = isMultipleSolidLt6mmShape(input);
+  // issue #16 Candidate C: the GR-7 shape likewise needs no single-lesion measurement -- its
+  // step-2 block asks only the governing-nodule safeguard (no Fleischner risk category).
+  const multipleSolidGte6mmShape = isMultipleSolidGte6mmShape(input);
   const outOfScopeReason = pathwayStepOutOfScopeReason(input);
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
@@ -176,9 +182,15 @@ export function App() {
   // an unanswered S3 criterion is itself a valid, intended INSUFFICIENT_INPUT outcome (G3), not a
   // state the UI should block reaching. Unchanged for every existing initial-timepoint pathway.
   // issue #16 Candidate A: likewise for the GR-5 shape -- an unanswered Fleischner size state is
-  // the intended Fleischner INSUFFICIENT_INPUT outcome.
+  // the intended Fleischner INSUFFICIENT_INPUT outcome. issue #16 Candidate C: likewise for the
+  // GR-7 shape -- an unanswered safeguard is Fleischner INSUFFICIENT_INPUT, a not-confirmed one
+  // Fleischner OUTSIDE_CURRENT_RULESET_SCOPE.
   const canEvaluate =
-    hasMeasurement || isFollowUpTimepoint || multipleSubsolidShape || multipleSolidLt6mmShape;
+    hasMeasurement ||
+    isFollowUpTimepoint ||
+    multipleSubsolidShape ||
+    multipleSolidLt6mmShape ||
+    multipleSolidGte6mmShape;
 
   const handleConfirmPathway = () => {
     if (!canConfirmPathway) return;
@@ -336,7 +348,38 @@ export function App() {
             </>
           )}
 
-          {!isFollowUpTimepoint && !multipleSubsolidShape && !multipleSolidLt6mmShape && (
+          {/* issue #16 Candidate C (readiness 6268250838 clarification 1): shown for the GR-7 shape
+              regardless of eventual Fleischner applicability -- no pre-evaluation SAR logic; after
+              Evaluate, NOT_APPLICABLE still takes precedence over the Atomic Clinical Rule. */}
+          {multipleSolidGte6mmShape && (
+            <>
+              <p>
+                Fleischner recommends an initial CT at 3–6 months for multiple solid nodules when at
+                least one nodule measures 6 mm or larger. The app does not select, rank, or measure
+                an individual nodule, and does not use a Fleischner risk category for this
+                recommendation.
+              </p>
+              <p>{FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT}</p>
+              <p className="notice">{FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE}</p>
+              <div className="field-grid">
+                {multipleSolidGte6mmSafeguardFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
+              {input.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management === false && (
+                <p className="notice notice-block">
+                  {FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE}
+                </p>
+              )}
+            </>
+          )}
+
+          {!isFollowUpTimepoint && !multipleSubsolidShape && !multipleSolidLt6mmShape && !multipleSolidGte6mmShape && (
             <>
               <p>Enter diameter and/or volume &mdash; at least one is required.</p>
               <div className="field-grid">
@@ -466,6 +509,11 @@ export function App() {
                   <h3>{SOURCE_LABELS[outcome.recommendationSourceId] ?? outcome.recommendationSourceId}</h3>
                   <p className="outcome-state">{OUTCOME_LABELS[outcome.state]}</p>
                   {outcome.reason && <p className="outcome-reason">{outcome.reason}</p>}
+                  {showsSolitarySafeguardNotConfirmedNotice(trace, outcome) && (
+                    <p className="notice">
+                      {FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE}
+                    </p>
+                  )}
                   {outcome.state === "RECOMMENDATION" && outcome.recommendation && (
                     <RecommendationView recommendation={outcome.recommendation} />
                   )}

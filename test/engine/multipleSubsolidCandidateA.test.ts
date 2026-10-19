@@ -62,6 +62,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-4": "NOT_MATCHED",
       "GR-5": "MATCHED",
       "GR-6": "NOT_MATCHED",
+      "GR-7": "NOT_MATCHED",
     });
   });
 
@@ -75,6 +76,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-4": "NOT_MATCHED",
       "GR-5": "MATCHED",
       "GR-6": "NOT_MATCHED",
+      "GR-7": "NOT_MATCHED",
     });
   });
 
@@ -419,9 +421,9 @@ describe("governed JSON shape (case 32)", () => {
 });
 
 describe("versions (case 33)", () => {
-  it("a Candidate-A trace reports engineVersion and schemaVersion 1.7.0", () => {
+  it("a Candidate-A trace reports the current engineVersion and schemaVersion (1.9.0 since #16 Candidate C)", () => {
     const trace = evaluate({ ...base, fleischner_multiple_subsolid_any_gte_6mm: true }, release);
-    expect(trace.engineVersion).toBe("1.8.0");
-    expect(trace.schemaVersion).toBe("1.8.0");
+    expect(trace.engineVersion).toBe("1.9.0");
+    expect(trace.schemaVersion).toBe("1.9.0");
   });
 });

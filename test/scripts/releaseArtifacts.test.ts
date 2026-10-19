@@ -16,12 +16,15 @@ import { RELEASE_NOTES, RULE_FILES, SOURCE_QUALITY_FINDINGS } from "../../script
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "../..");
 
-const CANDIDATE_B_RELEASE_ID = "rel-1d516b878ab19653";
-const CANDIDATE_B_CREATED_AT = "2026-09-30T19:00:00.000Z";
+// issue #16 Candidate C: the active, governed Release the build must reproduce.
+const CANDIDATE_C_RELEASE_ID = "rel-9fc9fb43257d89fb";
+const CANDIDATE_C_CREATED_AT = "2026-10-19T14:00:28.586Z";
 const inputs = { ruleFiles: RULE_FILES, sourceQualityFindings: SOURCE_QUALITY_FINDINGS, notes: RELEASE_NOTES };
 
 // final spec 5917726111 case 52: the 22 pre-Candidate-B artifacts, pinned to their committed
 // (LF) blob content on main 97826b01 -- any byte change to a historical artifact fails here.
+// issue #16 Candidate C (final spec 6264850117 case 38): plus the now-historical Candidate-B pair
+// rel-1d516b878ab19653, pinned to its committed (LF) blob content on main 4dc4cfc4 -- 24 pinned.
 const HISTORICAL_ARTIFACT_SHA256: Record<string, string> = {
   "releases/rel-254d3d698cda65c1.json": "6de39fc27f7d076e53aedf83a00d2fbe63802224ba140ac371a02efb0244cbbc",
   "releases/rel-2564f51cfca6012a.json": "23221cacff50160fd64a0f5ce52a2266f172bc211f8ba5a5acc98ccd65947c5f",
@@ -45,6 +48,8 @@ const HISTORICAL_ARTIFACT_SHA256: Record<string, string> = {
   "manifests/rel-9b67d666172fb17d.json": "3ba42fd3c827d31473f96a430ba612803f40f15675f7c9887d0c7617ac39cfe4",
   "manifests/rel-e4af8bbb47916989.json": "686a46f7631ace5b4d2b55e7dfbefa54681ea20f7a5be2732184a9b169b8f244",
   "manifests/rel-fb4eb398cb3ae65d.json": "c1f394dbf9de91d5b5175d76b73356eddcd49a32fb81d6507cc3d332cb23bfb7",
+  "releases/rel-1d516b878ab19653.json": "0d7d85284542a1a4cc05b200729064ae19f1a8a43fe0c14a6534d9a7458e93d3",
+  "manifests/rel-1d516b878ab19653.json": "8e63d8a69a1940cf57701d01c93de8ab51df0329eeb3983e73b17ff1dd7ae965",
 };
 
 // Committed artifacts are LF; a Windows core.autocrlf checkout materializes them as CRLF.
@@ -53,8 +58,8 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 
 let artifactRoot: string;
 const ruleSets = () => join(artifactRoot, "clinical/rule-sets");
-const releasePath = () => join(ruleSets(), `releases/${CANDIDATE_B_RELEASE_ID}.json`);
-const manifestPath = () => join(ruleSets(), `manifests/${CANDIDATE_B_RELEASE_ID}.json`);
+const releasePath = () => join(ruleSets(), `releases/${CANDIDATE_C_RELEASE_ID}.json`);
+const manifestPath = () => join(ruleSets(), `manifests/${CANDIDATE_C_RELEASE_ID}.json`);
 const pointerPath = () => join(ruleSets(), "active-release.json");
 
 function snapshot(): Record<string, string> {
@@ -85,26 +90,26 @@ describe("release build: content-addressed artifacts are immutable (PR #38 P1-1)
     for (let run = 0; run < 2; run++) {
       const result = build();
       expect(result).toEqual({
-        releaseId: CANDIDATE_B_RELEASE_ID,
-        revisionCount: 21,
+        releaseId: CANDIDATE_C_RELEASE_ID,
+        revisionCount: 23,
         releaseWritten: false,
         manifestWritten: false,
       });
     }
     expect(snapshot()).toEqual(before);
-    expect(JSON.parse(readLf(pointerPath()))).toEqual({ activeReleaseId: CANDIDATE_B_RELEASE_ID });
+    expect(JSON.parse(readLf(pointerPath()))).toEqual({ activeReleaseId: CANDIDATE_C_RELEASE_ID });
     const release = JSON.parse(readLf(releasePath()));
-    expect(release.createdAt).toBe(CANDIDATE_B_CREATED_AT);
-    expect(release.revisions).toHaveLength(21);
+    expect(release.createdAt).toBe(CANDIDATE_C_CREATED_AT);
+    expect(release.revisions).toHaveLength(23);
   });
 
-  it("from scratch, the generator reproduces the committed Candidate-B Release and Manifest byte-for-byte", () => {
+  it("from scratch, the generator reproduces the committed Candidate-C Release and Manifest byte-for-byte", () => {
     const committedRelease = readLf(releasePath());
     const committedManifest = readLf(manifestPath());
     rmSync(releasePath());
     rmSync(manifestPath());
 
-    const result = build(() => CANDIDATE_B_CREATED_AT);
+    const result = build(() => CANDIDATE_C_CREATED_AT);
 
     expect(result.releaseWritten).toBe(true);
     expect(result.manifestWritten).toBe(true);
@@ -114,8 +119,8 @@ describe("release build: content-addressed artifacts are immutable (PR #38 P1-1)
 
   it("refuses, writing nothing, when the existing Release under the same id carries different revision content", () => {
     const tampered = JSON.parse(readLf(releasePath()));
-    tampered.revisions.find((r: { ruleId: string }) => r.ruleId === "ACR-FLEISCHNER-MULTIPLE-SOLID-LT6MM-HIGH-RISK")
-      .recommendation.considerAction.timing.intervals = ["6 months"];
+    tampered.revisions.find((r: { ruleId: string }) => r.ruleId === "ACR-FLEISCHNER-MULTIPLE-SOLID-GTE6MM-INITIAL")
+      .recommendation.actions[0].timing.intervals = ["6 months"];
     writeFileSync(releasePath(), JSON.stringify(tampered, null, 2) + "\n");
     writeFileSync(pointerPath(), JSON.stringify({ activeReleaseId: "rel-254d3d698cda65c1" }, null, 2) + "\n");
     const before = snapshot();
@@ -157,16 +162,17 @@ describe("release build: content-addressed artifacts are immutable (PR #38 P1-1)
 });
 
 describe("historical Release/Manifest artifacts are byte-pinned (final spec case 52)", () => {
-  it("exactly the 22 pre-Candidate-B artifacts plus the Candidate-B pair exist, and every historical one matches its pinned hash", () => {
+  it("exactly the 24 historical artifacts (22 pre-Candidate-B + the Candidate-B pair) plus the Candidate-C pair exist, and every historical one matches its pinned hash", () => {
     const committed = join(repoRoot, "clinical/rule-sets");
     const present = ["releases", "manifests"].flatMap((dir) =>
       readdirSync(join(committed, dir)).map((name) => `${dir}/${name}`),
     );
+    expect(Object.keys(HISTORICAL_ARTIFACT_SHA256)).toHaveLength(24);
     expect(present.sort()).toEqual(
       [
         ...Object.keys(HISTORICAL_ARTIFACT_SHA256),
-        `releases/${CANDIDATE_B_RELEASE_ID}.json`,
-        `manifests/${CANDIDATE_B_RELEASE_ID}.json`,
+        `releases/${CANDIDATE_C_RELEASE_ID}.json`,
+        `manifests/${CANDIDATE_C_RELEASE_ID}.json`,
       ].sort(),
     );
     for (const [path, hash] of Object.entries(HISTORICAL_ARTIFACT_SHA256)) {

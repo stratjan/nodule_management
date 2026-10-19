@@ -36,6 +36,8 @@ const RULE_FILES = [
   "clinical/rules/pathway/gr-6-incidental-multiple-solid-lt-6mm-initial.json",
   "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-low-risk.json",
   "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-high-risk.json",
+  "clinical/rules/pathway/gr-7-incidental-multiple-solid-gte-6mm-initial.json",
+  "clinical/rules/recommendations/fleischner-multiple-solid-gte6mm-initial.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {

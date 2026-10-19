@@ -1,9 +1,13 @@
 // issue #16 Candidate A (final spec comment 5858670823 §12, acceptance cases 30-31): every
-// immutable historical Rule-Set Release artifact still parses under the 1.8.0 schema, its releaseId
+// immutable historical Rule-Set Release artifact still parses under the 1.9.0 schema, its releaseId
 // still recomputes from its own content, and none of them contains Candidate-A content; and the
 // pre-Candidate-A Release (rel-738021fc80b35115, Candidate C) evaluates representative solitary
 // inputs identically to the new Release. Only reads the artifacts -- never rebuilds or rewrites
 // them.
+// issue #16 Candidate C (final spec 6264850117 §11 cases 35-37): rel-1d516b878ab19653 (Candidate
+// B) is now historical too; no historical artifact contains GR-7 / Candidate-C content, and the
+// Candidate-B Release evaluates solitary, Candidate-A and Candidate-B inputs identically to the
+// new Release.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +24,7 @@ const releasesDir = join(repoRoot, "clinical/rule-sets/releases");
 
 const PRE_CANDIDATE_A_RELEASE_ID = "rel-738021fc80b35115";
 const PRE_CANDIDATE_B_RELEASE_ID = "rel-254d3d698cda65c1";
+const PRE_CANDIDATE_C_RELEASE_ID = "rel-1d516b878ab19653";
 
 function loadRelease(releaseId: string): RuleSetRelease {
   const raw = JSON.parse(readFileSync(join(releasesDir, `${releaseId}.json`), "utf-8"));
@@ -42,6 +47,13 @@ describe("historical Rule-Set Releases (case 30)", () => {
     expect(historicalReleaseIds).toContain(PRE_CANDIDATE_A_RELEASE_ID);
   });
 
+  it("the Candidate-B Release rel-1d516b878ab19653 is now historical (12 historical artifacts)", () => {
+    expect(activeReleaseId).not.toBe(PRE_CANDIDATE_C_RELEASE_ID);
+    expect(historicalReleaseIds).toContain(PRE_CANDIDATE_C_RELEASE_ID);
+    expect(historicalReleaseIds).toContain(PRE_CANDIDATE_B_RELEASE_ID);
+    expect(historicalReleaseIds).toHaveLength(12);
+  });
+
   for (const releaseId of historicalReleaseIds) {
     describe(releaseId, () => {
       it("parses under the current schema", () => {
@@ -54,14 +66,26 @@ describe("historical Rule-Set Releases (case 30)", () => {
         expect(computeReleaseId(release.revisions)).toBe(releaseId);
       });
 
-      it("contains no Candidate-B GR-6 / multiple-solid pathway / considerAction content", () => {
+      it("contains no Candidate-C GR-7 / multiple-solid >=6 mm pathway / safeguard content (case 36)", () => {
         const serialized = readFileSync(join(releasesDir, `${releaseId}.json`), "utf-8");
-        expect(serialized).not.toContain("\"GR-6\"");
-        expect(serialized).not.toContain("incidental-multiple-solid-lt-6mm-initial");
-        expect(serialized).not.toContain("\"considerAction\"");
+        expect(serialized).not.toContain("\"GR-7\"");
+        expect(serialized).not.toContain("incidental-multiple-solid-gte-6mm-initial");
+        expect(serialized).not.toContain("ACR-FLEISCHNER-MULTIPLE-SOLID-GTE6MM-INITIAL");
+        expect(serialized).not.toContain(
+          "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management",
+        );
       });
 
-      if (releaseId !== PRE_CANDIDATE_B_RELEASE_ID) {
+      if (releaseId !== PRE_CANDIDATE_C_RELEASE_ID) {
+        it("pre-Candidate-B artifacts contain no Candidate-B GR-6 / multiple-solid pathway / considerAction content", () => {
+          const serialized = readFileSync(join(releasesDir, `${releaseId}.json`), "utf-8");
+          expect(serialized).not.toContain("\"GR-6\"");
+          expect(serialized).not.toContain("incidental-multiple-solid-lt-6mm-initial");
+          expect(serialized).not.toContain("\"considerAction\"");
+        });
+      }
+
+      if (releaseId !== PRE_CANDIDATE_B_RELEASE_ID && releaseId !== PRE_CANDIDATE_C_RELEASE_ID) {
         it("pre-Candidate-A artifacts contain no GR-5 / multiple-subsolid pathway", () => {
           const serialized = readFileSync(join(releasesDir, `${releaseId}.json`), "utf-8");
           expect(serialized).not.toContain("\"GR-5\"");
@@ -72,12 +96,25 @@ describe("historical Rule-Set Releases (case 30)", () => {
   }
 });
 
-describe("representative existing evaluations are identical before and after Candidate B", () => {
-  const before = loadRelease(PRE_CANDIDATE_B_RELEASE_ID);
-  const after = loadTestRelease();
+const applicability = { age: 55, known_malignancy_history: false, immunocompromised: false };
+const candidateBBase: ClinicalInputState = {
+  assessment_context: "incidental",
+  assessment_timepoint: "initial",
+  nodule_count: 3,
+  multiple_nodules_all_subsolid: false,
+  multiple_nodules_all_solid: true,
+  multiple_nodules_discrete_circumscribed: true,
+  fleischner_multiple_solid_all_lt_6mm: true,
+  ...applicability,
+};
+const candidateBCases: { name: string; input: ClinicalInputState }[] = [
+  { name: "GR-6 multiple-solid <6 mm low risk", input: { ...candidateBBase, fleischner_multiple_solid_risk_category: "low" } },
+  { name: "GR-6 multiple-solid <6 mm high risk", input: { ...candidateBBase, fleischner_multiple_solid_risk_category: "high" } },
+  { name: "GR-6 multiple-solid <6 mm risk absent", input: candidateBBase },
+];
 
-  const applicability = { age: 55, known_malignancy_history: false, immunocompromised: false };
-  const cases: { name: string; input: ClinicalInputState }[] = [
+function representativeCases(): { name: string; input: ClinicalInputState }[] {
+  return [
     {
       name: "GR-5 multiple-subsolid State B",
       input: {
@@ -164,6 +201,18 @@ describe("representative existing evaluations are identical before and after Can
       },
     },
   ];
+}
+
+for (const { label, baselineId, cases } of [
+  { label: "Candidate B", baselineId: PRE_CANDIDATE_B_RELEASE_ID, cases: representativeCases() },
+  {
+    label: "Candidate C (case 37)",
+    baselineId: PRE_CANDIDATE_C_RELEASE_ID,
+    cases: [...representativeCases(), ...candidateBCases],
+  },
+]) describe(`representative existing evaluations are identical before and after ${label}`, () => {
+  const before = loadRelease(baselineId);
+  const after = loadTestRelease();
 
   for (const { name, input } of cases) {
     it(name, () => {
@@ -173,7 +222,7 @@ describe("representative existing evaluations are identical before and after Can
       expect(afterTrace.pathwaySelection.state).toBe("MATCHED");
       expect(afterTrace.sourceEvaluationOutcomes).toEqual(beforeTrace.sourceEvaluationOutcomes);
       expect(afterTrace.recommendationSet).toEqual(beforeTrace.recommendationSet);
-      if (name === "GR-5 multiple-subsolid F4 absent") {
+      if (name === "GR-5 multiple-subsolid F4 absent" || name === "GR-6 multiple-solid <6 mm risk absent") {
         expect(afterTrace.recommendationSet).toHaveLength(0);
         expect(afterTrace.sourceEvaluationOutcomes.find((o) => o.recommendationSourceId === "fleischner")?.state)
           .toBe("INSUFFICIENT_INPUT");

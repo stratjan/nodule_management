@@ -1,0 +1,55 @@
+{
+  "ruleId": "GR-7",
+  "revisionId": "GR-7-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-10-19"
+  },
+  "provenance": {
+    "sourceDocument": "GitHub issue #16 (Clinical/Product HITL sign-off 6262113321; architecture confirmation 6262113692; final spec 6264850117; readiness sign-off 6268250838)",
+    "version": "issue #16 Candidate C final spec",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Candidate C boundary (HITL 1): incidental, initial, multiple solid-only discrete/circumscribed nodules, at least one >=6 mm; HITL 2: fleischner_multiple_solid_all_lt_6mm=false reused as the >=6 mm set state under the Fleischner whole-nodule average-diameter convention; GR-6/GR-7 exclusive by construction (architecture confirmation 6262113692 items 2-3). The governing-nodule safeguard is not a gate condition."
+  },
+  "clinicalPathwayId": "incidental-multiple-solid-gte-6mm-initial",
+  "conditions": [
+    {
+      "field": "assessment_context",
+      "op": "eq",
+      "value": "incidental"
+    },
+    {
+      "field": "assessment_timepoint",
+      "op": "eq",
+      "value": "initial"
+    },
+    {
+      "field": "nodule_count",
+      "op": "gte",
+      "value": 2
+    },
+    {
+      "field": "multiple_nodules_all_subsolid",
+      "op": "eq",
+      "value": false
+    },
+    {
+      "field": "multiple_nodules_all_solid",
+      "op": "eq",
+      "value": true
+    },
+    {
+      "field": "multiple_nodules_discrete_circumscribed",
+      "op": "eq",
+      "value": true
+    },
+    {
+      "field": "fleischner_multiple_solid_all_lt_6mm",
+      "op": "eq",
+      "value": false
+    }
+  ]
+}
