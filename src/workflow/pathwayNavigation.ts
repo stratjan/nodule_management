@@ -1,22 +1,26 @@
 // Pure wizard navigation predicates (ADR-0006 repo layout: workflow = question sequencing/
 // navigation only, no clinical logic). These decide whether the UI may advance past pathway
 // identification -- they mirror the Clinical Pathway Gates' structural nodule_count requirements
-// (GR-1..GR-4: nodule_count = 1; GR-5: nodule_count >= 2) at the navigation level ONLY. The
-// engine's Clinical Pathway Gate (src/engine/evaluate.ts) remains the sole clinical authority on
+// (GR-1..GR-4: nodule_count = 1; GR-5/GR-6/GR-7: nodule_count >= 2) at the navigation level ONLY.
+// The engine's Clinical Pathway Gate (src/engine/evaluate.ts) remains the sole clinical authority on
 // whether a pathway actually matched; these predicates never substitute for that evaluation, they
 // only decide when to show the "Continue" step and which fields to ask.
-import type { ClinicalInputState } from "../engine/types";
+import type {
+  ClinicalInputState,
+  DecisionExecutionTrace,
+  SourceEvaluationOutcome,
+} from "../engine/types";
 import { pathwayFields } from "./fields";
 
 type FieldValue = string | number | boolean | undefined;
 
 /** issue #16 Candidate A: why a multiple-nodule pathway-step input is outside what this Rule-Set
- * Release covers -- a navigation mirror only, never a clinical outcome. */
+ * Release covers -- a navigation mirror only, never a clinical outcome. Candidate C removed the
+ * former multiple-solid >=6 mm stop: that shape is now the GR-7 pathway. */
 export type PathwayStepOutOfScopeReason =
   | "multiple-follow-up"
   | "multiple-mixed-solid-subsolid"
-  | "multiple-disseminated"
-  | "multiple-solid-gte-6mm";
+  | "multiple-disseminated";
 
 /** issue #16 Candidate A: the multiple-nodule branch applies to a whole-number nodule count of at
  * least 2. Any other value (1, cleared, fractional) is not the multiple branch. */
@@ -42,11 +46,6 @@ export function pathwayStepOutOfScopeReason(
     input.multiple_nodules_all_solid === false
   ) return "multiple-mixed-solid-subsolid";
   if (input.multiple_nodules_discrete_circumscribed === false) return "multiple-disseminated";
-  if (
-    input.multiple_nodules_all_subsolid === false &&
-    input.multiple_nodules_all_solid === true &&
-    input.fleischner_multiple_solid_all_lt_6mm === false
-  ) return "multiple-solid-gte-6mm";
   return null;
 }
 
@@ -104,6 +103,42 @@ export function isMultipleSolidLt6mmShape(input: Partial<ClinicalInputState>): b
     input.multiple_nodules_all_solid === true &&
     input.multiple_nodules_discrete_circumscribed === true &&
     input.fleischner_multiple_solid_all_lt_6mm === true
+  );
+}
+
+/** issue #16 Candidate C: exact bounded GR-7 shape -- mirrors GR-7's conditions; identical to the
+ * GR-6 shape except that at least one solid nodule is >=6 mm (all_lt_6mm === false). */
+export function isMultipleSolidGte6mmShape(input: Partial<ClinicalInputState>): boolean {
+  return (
+    input.assessment_context === "incidental" &&
+    input.assessment_timepoint === "initial" &&
+    isMultipleNoduleCount(input.nodule_count) &&
+    input.multiple_nodules_all_subsolid === false &&
+    input.multiple_nodules_all_solid === true &&
+    input.multiple_nodules_discrete_circumscribed === true &&
+    input.fleischner_multiple_solid_all_lt_6mm === false
+  );
+}
+
+/**
+ * issue #16 Candidate C (readiness 6268250838, binding clarification 2): whether the Results page
+ * shows the neutral not-confirmed notice beside a Source Evaluation Outcome. True only when GR-7
+ * matched, the clinician did not confirm the governing-nodule safeguard (false, never absent), and
+ * Fleischner returned OUTSIDE_CURRENT_RULESET_SCOPE. Reads the already-computed Decision Execution
+ * Trace only -- presentation, never evaluation: it does not redirect, evaluate a solitary pathway,
+ * identify a lesion, or alter the trace or the outcome.
+ */
+export function showsSolitarySafeguardNotConfirmedNotice(
+  trace: DecisionExecutionTrace,
+  outcome: SourceEvaluationOutcome,
+): boolean {
+  return (
+    trace.pathwaySelection.state === "MATCHED" &&
+    trace.pathwaySelection.clinicalPathwayId === "incidental-multiple-solid-gte-6mm-initial" &&
+    trace.normalizedClinicalInputState
+      .fleischner_multiple_solid_no_individual_nodule_requires_solitary_management === false &&
+    outcome.recommendationSourceId === "fleischner" &&
+    outcome.state === "OUTSIDE_CURRENT_RULESET_SCOPE"
   );
 }
 
@@ -169,6 +204,12 @@ export function applyGr4FollowUpReset(
  *   Fleischner size-state fact is deleted -- a pathway-specific step-2 field never survives its
  *   pathway shape.
  *
+ * - issue #16 Candidate C: leaving the GR-7 shape (any GR-7 pathway fact edited away from its GR-7
+ *   value, including all_lt_6mm edited to anything other than false) deletes the governing-nodule
+ *   safeguard; leaving the GR-6 shape (including all_lt_6mm edited to anything other than true)
+ *   deletes the Candidate-B risk category. A Candidate-B risk value therefore never coexists with
+ *   the GR-7 shape, and a Candidate-C safeguard never coexists with the GR-6 shape.
+ *
  * Editing nodule_count between two values >= 2, the size-state fact itself, the set-level facts to
  * true, or the source-neutral applicability facts (age/known_malignancy_history/immunocompromised)
  * clears nothing.
@@ -195,6 +236,7 @@ export function applyNoduleCountBranchReset(
       delete reset.fleischner_multiple_subsolid_any_gte_6mm;
       delete reset.fleischner_multiple_solid_all_lt_6mm;
       delete reset.fleischner_multiple_solid_risk_category;
+      delete reset.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management;
     }
     return reset;
   }
@@ -210,10 +252,12 @@ export function applyNoduleCountBranchReset(
     delete reset.multiple_nodules_all_solid;
     delete reset.fleischner_multiple_solid_all_lt_6mm;
     delete reset.fleischner_multiple_solid_risk_category;
+    delete reset.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management;
   }
   if (id === "multiple_nodules_all_solid" && value !== true) {
     delete reset.fleischner_multiple_solid_all_lt_6mm;
     delete reset.fleischner_multiple_solid_risk_category;
+    delete reset.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management;
   }
 
   const leavesGr6 =
@@ -224,6 +268,17 @@ export function applyNoduleCountBranchReset(
     (id === "multiple_nodules_discrete_circumscribed" && value !== true) ||
     (id === "fleischner_multiple_solid_all_lt_6mm" && value !== true);
   if (leavesGr6) delete reset.fleischner_multiple_solid_risk_category;
+
+  const leavesGr7 =
+    (id === "assessment_timepoint" && value !== "initial") ||
+    (id === "assessment_context" && value !== "incidental") ||
+    (id === "multiple_nodules_all_subsolid" && value !== false) ||
+    (id === "multiple_nodules_all_solid" && value !== true) ||
+    (id === "multiple_nodules_discrete_circumscribed" && value !== true) ||
+    (id === "fleischner_multiple_solid_all_lt_6mm" && value !== false);
+  if (leavesGr7) {
+    delete reset.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management;
+  }
 
   return reset;
 }

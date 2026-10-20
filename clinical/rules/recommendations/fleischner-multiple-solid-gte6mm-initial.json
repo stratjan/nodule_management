@@ -1,0 +1,63 @@
+{
+  "ruleId": "ACR-FLEISCHNER-MULTIPLE-SOLID-GTE6MM-INITIAL",
+  "revisionId": "ACR-FLEISCHNER-MULTIPLE-SOLID-GTE6MM-INITIAL-r1",
+  "kind": "atomic-clinical-rule",
+  "recommendationSourceId": "fleischner",
+  "clinicalPathwayId": "incidental-multiple-solid-gte-6mm-initial",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-10-19"
+  },
+  "provenanceAnchors": [
+    {
+      "role": "primary-management",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Table 1A (Solid Nodules), multiple-nodule row, 6-8 mm and >8 mm columns, low- and high-risk cells (initial CT at 3-6 months), and Recommendation 2 (multiple solid noncalcified nodules, at least one >=6 mm). Paraphrase only. Only the initial CT is governed; the subsequent risk-dependent CT at 18-24 months is not executed (HITL 6262113321, HITL 5/6). Recommendation 2's contextual notes on known or suspected primary neoplasm and active infection are not executable conditions here."
+      }
+    },
+    {
+      "role": "governing-nodule-safeguard",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "Recommendation 2: management may be guided by a larger or more suspicious (dominant) nodule according to the solitary-nodule recommendations; the dominant nodule is not necessarily the largest. Paraphrase only. The clause is represented solely as the clinician's explicit confirmation fleischner_multiple_solid_no_individual_nodule_requires_solitary_management (HITL 6262113321, HITL 3/4); non-confirmation is outside current scope with no substitute and no redirect. No lesion is identified or selected."
+      }
+    },
+    {
+      "role": "whole-nodule-measurement",
+      "provenance": {
+        "sourceDocument": "MacMahon H, Naidich DP, Goo JM, Lee KS, Leung ANC, Mayo JR, Mehta AC, Ohno Y, Powell CA, Prokop M, Rubin GD, Schaefer-Prokop CM, Travis WD, Van Schil PE, Bankier AA. Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017",
+        "version": "Radiology. 2017;284(1):228-243. doi:10.1148/radiol.2017161659",
+        "originalLanguage": "English",
+        "sourceType": "Source Guideline",
+        "locator": "General nodule measurement note: use the average of long- and short-axis diameters rounded to the nearest whole millimeter. This convention governs the clinician's set-level fleischner_multiple_solid_all_lt_6mm=false attestation on GR-7; no per-lesion engine measurement or volume-equivalent logic is introduced."
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "field": "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management",
+      "op": "eq",
+      "value": true
+    }
+  ],
+  "recommendation": {
+    "actions": [
+      {
+        "label": "CT follow-up",
+        "timing": {
+          "kind": "specified",
+          "intervals": ["3-6 months"]
+        }
+      }
+    ],
+    "rationale": "Fleischner (2017) Recommendation 2 and Table 1A recommend an initial CT follow-up at 3-6 months for multiple solid noncalcified pulmonary nodules found incidentally when at least one nodule is 6 mm or larger — in both the 6-8 mm and the >8 mm columns and for both low- and high-risk patients — in a patient >=35 years old with no known malignancy history and not immunocompromised. This rule applies only to multiple discrete/circumscribed nodules whose set is solid-only, at initial assessment, with at least one nodule 6 mm or larger by the Fleischner whole-nodule average-diameter convention. Fleischner notes that management may instead be guided by a larger or more suspicious nodule according to its solitary-nodule recommendations, and that the most suspicious nodule is not necessarily the largest; this recommendation applies only because the clinician has confirmed that no individual larger or more suspicious nodule currently requires such management. No index, largest, dominant, or most-suspicious nodule is identified, ranked, or selected by this application, and no Fleischner risk category is collected or used. This recommendation covers only the first follow-up CT: the risk-dependent CT at 18-24 months, solitary-nodule-directed management of any individual nodule, PET/CT, biopsy, and resection are outside this Rule-Set Release and must not be inferred from it."
+  }
+}

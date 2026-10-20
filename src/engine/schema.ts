@@ -52,6 +52,7 @@ const clinicalPathwayIdSchema = z.enum([
   "incidental-solitary-solid-follow-up",
   "incidental-multiple-subsolid-initial",
   "incidental-multiple-solid-lt-6mm-initial",
+  "incidental-multiple-solid-gte-6mm-initial",
 ]);
 
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema

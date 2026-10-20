@@ -13,6 +13,7 @@ import {
   canContinuePastPathwayStep,
   isMultipleSubsolidShape,
   isMultipleSolidLt6mmShape,
+  isMultipleSolidGte6mmShape,
   pathwayStepOutOfScopeReason,
   shouldClearGr4FollowUpFields,
 } from "../../src/workflow/pathwayNavigation";
@@ -542,13 +543,16 @@ describe("issue #16 Candidate B workflow/reset", () => {
     expect(canContinuePastPathwayStep({ ...noSolid, multiple_nodules_all_solid: true })).toBe(false);
   });
 
-  it("returns the approved mixed / >=6 / follow-up / disseminated reasons", () => {
+  it("returns the approved mixed / follow-up / disseminated reasons; >=6 mm is no longer a stop (#16 Candidate C)", () => {
     expect(pathwayStepOutOfScopeReason({ ...validB, multiple_nodules_all_solid: false })).toBe(
       "multiple-mixed-solid-subsolid",
     );
     expect(
       pathwayStepOutOfScopeReason({ ...validB, fleischner_multiple_solid_all_lt_6mm: false }),
-    ).toBe("multiple-solid-gte-6mm");
+    ).toBeNull();
+    expect(
+      canContinuePastPathwayStep({ ...validB, fleischner_multiple_solid_all_lt_6mm: false }),
+    ).toBe(true);
     expect(pathwayStepOutOfScopeReason({ ...validB, assessment_timepoint: "follow-up" })).toBe(
       "multiple-follow-up",
     );
@@ -680,6 +684,192 @@ describe("issue #16 Candidate B workflow/reset", () => {
       ["immunocompromised", false],
     ] as const) {
       expect(edit(validB, id, value)).toEqual({ ...validB, [id]: value });
+    }
+  });
+});
+
+describe("issue #16 Candidate C workflow/reset (final spec 6264850117 cases 20-26)", () => {
+  const SAFEGUARD = "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management";
+  const shapeC: ClinicalInputState = {
+    assessment_context: "incidental",
+    assessment_timepoint: "initial",
+    nodule_count: 3,
+    multiple_nodules_all_subsolid: false,
+    multiple_nodules_all_solid: true,
+    multiple_nodules_discrete_circumscribed: true,
+    fleischner_multiple_solid_all_lt_6mm: false,
+  };
+  const validC: ClinicalInputState = {
+    ...shapeC,
+    fleischner_multiple_solid_no_individual_nodule_requires_solitary_management: true,
+  };
+
+  function edit(prev: ClinicalInputState, id: string, value: string | number | boolean | undefined) {
+    return applyNoduleCountBranchReset(
+      applyGr4FollowUpReset({ ...prev, [id]: value }, id, value),
+      id,
+      value,
+    );
+  }
+
+  it("case 20: recognizes the exact GR-7 shape with no single-lesion measurement and no step-1 stop", () => {
+    expect(isMultipleSolidGte6mmShape(shapeC)).toBe(true);
+    expect(isMultipleSolidLt6mmShape(shapeC)).toBe(false);
+    expect(pathwayStepOutOfScopeReason(shapeC)).toBeNull();
+    expect(canContinuePastPathwayStep(shapeC)).toBe(true);
+    expect(shapeC.nodule_size_mm).toBeUndefined();
+    expect(shapeC.nodule_volume_mm3).toBeUndefined();
+    for (const nodule_count of [2, 7]) {
+      expect(isMultipleSolidGte6mmShape({ ...shapeC, nodule_count })).toBe(true);
+    }
+    for (const override of [
+      { nodule_count: 1 },
+      { nodule_count: 2.5 },
+      { assessment_context: "screening" as const },
+      { assessment_timepoint: "follow-up" as const },
+      { multiple_nodules_all_subsolid: true },
+      { multiple_nodules_all_solid: false },
+      { multiple_nodules_discrete_circumscribed: false },
+      { fleischner_multiple_solid_all_lt_6mm: true },
+      { fleischner_multiple_solid_all_lt_6mm: undefined },
+    ]) {
+      expect(isMultipleSolidGte6mmShape({ ...shapeC, ...override })).toBe(false);
+    }
+    // the size answer is still required before continuing
+    expect(
+      canContinuePastPathwayStep({ ...shapeC, fleischner_multiple_solid_all_lt_6mm: undefined }),
+    ).toBe(false);
+  });
+
+  it("case 21: the out-of-scope reason type has exactly the three remaining reasons", () => {
+    const source = readFileSync(
+      join(__dirname, "../../src/workflow/pathwayNavigation.ts"),
+      "utf-8",
+    ).replace(/\r\n/g, "\n");
+    const start = source.indexOf("export type PathwayStepOutOfScopeReason =");
+    const decl = source.slice(start, source.indexOf(";", start));
+    expect([...decl.matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "multiple-follow-up",
+      "multiple-mixed-solid-subsolid",
+      "multiple-disseminated",
+    ]);
+    expect(source).not.toContain("\"multiple-solid-gte-6mm\"");
+    expect(pathwayStepOutOfScopeReason({ ...shapeC, multiple_nodules_all_solid: false })).toBe(
+      "multiple-mixed-solid-subsolid",
+    );
+    expect(pathwayStepOutOfScopeReason({ ...shapeC, assessment_timepoint: "follow-up" })).toBe(
+      "multiple-follow-up",
+    );
+    expect(
+      pathwayStepOutOfScopeReason({ ...shapeC, multiple_nodules_discrete_circumscribed: false }),
+    ).toBe("multiple-disseminated");
+  });
+
+  const exits = [
+    ["nodule_count", 1],
+    ["nodule_count", undefined],
+    ["nodule_count", 2.5],
+    ["multiple_nodules_all_subsolid", true],
+    ["multiple_nodules_all_subsolid", undefined],
+    ["multiple_nodules_all_solid", false],
+    ["multiple_nodules_all_solid", undefined],
+    ["fleischner_multiple_solid_all_lt_6mm", true],
+    ["fleischner_multiple_solid_all_lt_6mm", undefined],
+    ["multiple_nodules_discrete_circumscribed", false],
+    ["multiple_nodules_discrete_circumscribed", undefined],
+    ["assessment_timepoint", "follow-up"],
+    ["assessment_timepoint", undefined],
+    ["assessment_context", "screening"],
+    ["assessment_context", undefined],
+  ] as const;
+
+  it("case 22: every exit from the full C state clears the safeguard", () => {
+    for (const [id, value] of exits) {
+      const left = edit(validC, id, value);
+      expect(left[SAFEGUARD], `${id}=${String(value)}`).toBeUndefined();
+      expect(isMultipleSolidGte6mmShape(left)).toBe(false);
+    }
+  });
+
+  it("case 23: no exit resurrects the safeguard on re-entering the exact C shape, including 3 -> 1 -> 3", () => {
+    for (const [id, leave, back] of [
+      ["assessment_context", "screening", "incidental"],
+      ["assessment_timepoint", "follow-up", "initial"],
+      ["multiple_nodules_discrete_circumscribed", false, true],
+      ["fleischner_multiple_solid_all_lt_6mm", true, false],
+      ["fleischner_multiple_solid_all_lt_6mm", undefined, false],
+    ] as const) {
+      const reentered = edit(edit(validC, id, leave), id, back);
+      expect(isMultipleSolidGte6mmShape(reentered), id).toBe(true);
+      expect(reentered[SAFEGUARD], id).toBeUndefined();
+    }
+    const viaSolid = edit(
+      edit(edit(validC, "multiple_nodules_all_solid", false), "multiple_nodules_all_solid", true),
+      "fleischner_multiple_solid_all_lt_6mm",
+      false,
+    );
+    expect(isMultipleSolidGte6mmShape(viaSolid)).toBe(true);
+    expect(viaSolid[SAFEGUARD]).toBeUndefined();
+
+    let viaSubsolid = validC;
+    for (const [id, value] of [
+      ["multiple_nodules_all_subsolid", true],
+      ["multiple_nodules_all_subsolid", false],
+      ["multiple_nodules_all_solid", true],
+      ["fleischner_multiple_solid_all_lt_6mm", false],
+    ] as const) viaSubsolid = edit(viaSubsolid, id, value);
+    expect(isMultipleSolidGte6mmShape(viaSubsolid)).toBe(true);
+    expect(viaSubsolid[SAFEGUARD]).toBeUndefined();
+
+    const viaSolitary = edit(edit(validC, "nodule_count", 1), "nodule_count", 3);
+    for (const key of [
+      "multiple_nodules_all_subsolid",
+      "multiple_nodules_all_solid",
+      "multiple_nodules_discrete_circumscribed",
+      "fleischner_multiple_solid_all_lt_6mm",
+      SAFEGUARD,
+    ] as const) {
+      expect(viaSolitary[key]).toBeUndefined();
+    }
+  });
+
+  it("case 24: B (risk set) -> all_lt_6mm=false clears the risk; the safeguard stays absent", () => {
+    const b: ClinicalInputState = {
+      ...shapeC,
+      fleischner_multiple_solid_all_lt_6mm: true,
+      fleischner_multiple_solid_risk_category: "high",
+    };
+    const toC = edit(b, "fleischner_multiple_solid_all_lt_6mm", false);
+    expect(isMultipleSolidGte6mmShape(toC)).toBe(true);
+    expect(toC.fleischner_multiple_solid_risk_category).toBeUndefined();
+    expect(toC[SAFEGUARD]).toBeUndefined();
+  });
+
+  it("case 25: C (safeguard set) -> all_lt_6mm=true clears the safeguard; the risk stays absent", () => {
+    for (const safeguard of [true, false]) {
+      const toB = edit({ ...shapeC, [SAFEGUARD]: safeguard }, "fleischner_multiple_solid_all_lt_6mm", true);
+      expect(isMultipleSolidLt6mmShape(toB)).toBe(true);
+      expect(toB[SAFEGUARD]).toBeUndefined();
+      expect(toB.fleischner_multiple_solid_risk_category).toBeUndefined();
+    }
+  });
+
+  it("case 26: count 3 -> 4, safeguard edits, re-affirming C facts, and applicability edits clear nothing", () => {
+    for (const [id, value] of [
+      ["nodule_count", 4],
+      [SAFEGUARD, false],
+      [SAFEGUARD, undefined],
+      ["assessment_context", "incidental"],
+      ["assessment_timepoint", "initial"],
+      ["multiple_nodules_all_subsolid", false],
+      ["multiple_nodules_all_solid", true],
+      ["multiple_nodules_discrete_circumscribed", true],
+      ["fleischner_multiple_solid_all_lt_6mm", false],
+      ["age", 70],
+      ["known_malignancy_history", true],
+      ["immunocompromised", true],
+    ] as const) {
+      expect(edit(validC, id, value)).toEqual({ ...validC, [id]: value });
     }
   });
 });

@@ -59,7 +59,8 @@ export type ClinicalPathwayId =
   | "incidental-solitary-part-solid-initial"
   | "incidental-solitary-solid-follow-up"
   | "incidental-multiple-subsolid-initial"
-  | "incidental-multiple-solid-lt-6mm-initial";
+  | "incidental-multiple-solid-lt-6mm-initial"
+  | "incidental-multiple-solid-gte-6mm-initial";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -509,10 +510,19 @@ export interface ClinicalInputState {
    * multiple set is fully solid. Never derived from multiple_nodules_all_subsolid. */
   multiple_nodules_all_solid?: boolean;
   /** issue #16 Candidate B: set-level Fleischner attestation that all solid nodules are <6 mm
-   * under the established whole-nodule average-diameter convention. */
+   * under the established whole-nodule average-diameter convention. false is the GR-7
+   * (Candidate C) pathway-identity value. */
   fleischner_multiple_solid_all_lt_6mm?: boolean;
   /** issue #16 Candidate B: clinician's explicit final Fleischner risk decision. */
   fleischner_multiple_solid_risk_category?: FleischnerRiskCategory;
+  /** issue #16 Candidate C (HITL 6262113321, HITL 3/4): explicit clinician confirmation that no
+   * individual larger / more suspicious nodule currently requires management according to the
+   * Fleischner solitary-nodule recommendations instead of this bounded multiple-nodule pathway.
+   * true = confirmed; false = not confirmed (Fleischner outside current scope, no substitute, no
+   * redirect); absent = not yet supplied. Never phrased or interpreted as "there is no dominant
+   * nodule", never derived from size, count, or any other field, and never identifies, stores,
+   * ranks, or selects a lesion. */
+  fleischner_multiple_solid_no_individual_nodule_requires_solitary_management?: boolean;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---
