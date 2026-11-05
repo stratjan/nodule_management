@@ -1,0 +1,35 @@
+{
+  "ruleId": "GR-8",
+  "revisionId": "GR-8-r1",
+  "kind": "pathway-gate",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-11-03"
+  },
+  "provenance": {
+    "sourceDocument": "GitHub issue #16 (architecture report 6337918762; Clinical/Product HITL 6338095264 Q2; Candidate-D HITL sign-off 6376704317 A/B; final spec 6411027075/6411027421; readiness sign-off 6614358295)",
+    "version": "issue #16 Candidate D final spec",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "Candidate D pathway identity (HITL Q2, sign-off B): incidental, follow-up, and an explicit clinician attestation that this is the first follow-up after an initial Fleischner multiple-solid >=6 mm episode for which CT at 3-6 months was intended. The attestation is identity only and asserts no current multiplicity, solidity, size, stability or persistence. No current count, morphology or set-composition condition. Disjoint from GR-4-r2 by construction on the origin field; disjoint from GR-1..GR-3 and GR-5..GR-7 on assessment_timepoint."
+  },
+  "clinicalPathwayId": "incidental-multiple-solid-gte-6mm-first-follow-up",
+  "conditions": [
+    {
+      "field": "assessment_context",
+      "op": "eq",
+      "value": "incidental"
+    },
+    {
+      "field": "assessment_timepoint",
+      "op": "eq",
+      "value": "follow-up"
+    },
+    {
+      "field": "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed",
+      "op": "eq",
+      "value": true
+    }
+  ]
+}

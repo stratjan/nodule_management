@@ -60,7 +60,8 @@ export type ClinicalPathwayId =
   | "incidental-solitary-solid-follow-up"
   | "incidental-multiple-subsolid-initial"
   | "incidental-multiple-solid-lt-6mm-initial"
-  | "incidental-multiple-solid-gte-6mm-initial";
+  | "incidental-multiple-solid-gte-6mm-initial"
+  | "incidental-multiple-solid-gte-6mm-first-follow-up";
 
 export interface PathwayGateRevision extends RuleRevisionBase {
   kind: "pathway-gate";
@@ -401,10 +402,39 @@ export type AtomicClinicalRuleRevision = RuleRevisionBase & {
   recommendation: RecommendationContent;
 } & ProvenanceCarrier;
 
+/** ADR-0012 §3: closed disposition vocabulary. Extend only by a new reviewed decision. */
+export type ClinicalDispositionKind = "clinician-directed-no-further-routine-surveillance";
+
+/** ADR-0012 §3: the governed content of a Clinical Disposition -- never Recommendation Content,
+ * never attributed to any Recommendation Source, and never carrying a free-text reason. */
+export interface ClinicalDispositionContent {
+  dispositionKind: ClinicalDispositionKind;
+  /** The governed semantic contract (issue #16 HITL Q3), verbatim. */
+  statement: string;
+  /** The governed explanatory text (issue #16 HITL Q3), verbatim. */
+  rationale: string;
+}
+
+/**
+ * ADR-0012 §3: the fourth governed Rule Revision kind. Bound to exactly one Clinical Pathway; its
+ * AND-only conditions use the existing fixed Condition vocabulary (ADR-0009). When it matches, the
+ * clinician-directed disposition is terminal: no Source Applicability Rule runs and no Source
+ * Evaluation Outcome is produced (ADR-0012 §4). Provenance cites the Clinical/Product decision that
+ * authorizes it, never a Source Guideline.
+ */
+export interface ClinicalDispositionRuleRevision extends RuleRevisionBase {
+  kind: "clinical-disposition";
+  clinicalPathwayId: ClinicalPathwayId;
+  conditions: Condition[];
+  disposition: ClinicalDispositionContent;
+  provenance: Provenance;
+}
+
 export type RuleRevision =
   | PathwayGateRevision
   | SourceApplicabilityRevision
-  | AtomicClinicalRuleRevision;
+  | AtomicClinicalRuleRevision
+  | ClinicalDispositionRuleRevision;
 
 export interface RuleSetRelease {
   releaseId: string;
@@ -513,7 +543,8 @@ export interface ClinicalInputState {
    * under the established whole-nodule average-diameter convention. false is the GR-7
    * (Candidate C) pathway-identity value. */
   fleischner_multiple_solid_all_lt_6mm?: boolean;
-  /** issue #16 Candidate B: clinician's explicit final Fleischner risk decision. */
+  /** issue #16 Candidate B: clinician's explicit final Fleischner risk decision. Also the
+   * clinician-attested risk for the GR-8 18-24-month CT (Candidate D). */
   fleischner_multiple_solid_risk_category?: FleischnerRiskCategory;
   /** issue #16 Candidate C (HITL 6262113321, HITL 3/4): explicit clinician confirmation that no
    * individual larger / more suspicious nodule currently requires management according to the
@@ -521,8 +552,32 @@ export interface ClinicalInputState {
    * true = confirmed; false = not confirmed (Fleischner outside current scope, no substitute, no
    * redirect); absent = not yet supplied. Never phrased or interpreted as "there is no dominant
    * nodule", never derived from size, count, or any other field, and never identifies, stores,
-   * ranks, or selects a lesion. */
+   * ranks, or selects a lesion. Also the fresh, current-assessment governing-lesion safeguard on
+   * GR-8 (Candidate D); never carried over from the initial assessment. */
   fleischner_multiple_solid_no_individual_nodule_requires_solitary_management?: boolean;
+  /** D-F1: issue #16 Candidate D (HITL 6338095264 Q2; sign-off 6376704317 B): explicit clinician
+   * attestation of the episode's historical origin.
+   * - true = this assessment is the first follow-up after an initial Fleischner multiple-solid
+   *   >=6 mm episode for which CT at 3-6 months was intended;
+   * - false = it is not;
+   * - absent = not yet supplied.
+   *
+   * Identity only. It asserts no current multiplicity, solidity, discreteness, size >=6 mm,
+   * stability, persistence, continued guideline eligibility, or absence of a governing lesion.
+   * Never derived from nodule_count, morphology, or any other field. GR-8 requires true; GR-4-r2
+   * requires false. */
+  fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed?: boolean;
+  /** D-F2: issue #16 Candidate D (HITL 6338095264 Q3; ADR-0012 §3): the clinician's own decision
+   * that, based on the current interval imaging findings and overall clinical context, no further
+   * routine pulmonary nodule surveillance is planned.
+   * - true = decided;
+   * - false = not decided;
+   * - absent = not yet supplied.
+   *
+   * Source-neutral: never attributed to Fleischner or any Recommendation Source. Never computed
+   * from size change, regression percentage, or resolution, and never accompanied by a free-text
+   * reason. Referenced only by Clinical Disposition Rule CDR-1. */
+  clinician_decides_no_further_routine_nodule_surveillance?: boolean;
 }
 
 // --- Source Evaluation Outcome (CONTEXT.md; ADR-0010) ---
@@ -600,7 +655,22 @@ export interface SourceEvaluationOutcome {
    * with zero unresolved siblings -- never an empty array standing in for "not applicable". Not
    * copied into RecommendationPayload/Recommendation -- trace/audit data only. */
   toleratedUnresolvedSiblings?: { ruleId: string; revisionId: string }[];
+  /** ADR-0012 §6 (issue #16 Candidate D): present and non-empty iff state === "INSUFFICIENT_INPUT",
+   * on every pathway and for every Release executed by this engine. Machine-readable; the guided
+   * UI reads this, never `reason`. Not copied into RecommendationPayload. */
+  unresolvedRequiredInputs?: UnresolvedRequiredInput[];
 }
+
+/** ADR-0012 §6: machine-readable unresolved required input. Never derived from `reason`. */
+export type UnresolvedRequiredInput =
+  | { kind: "field"; field: string }
+  | { kind: "any-of-fields"; fields: string[] }
+  | {
+      kind: "convention-bound-measurement";
+      container: "nodule_diameter_measurements" | "solid_component_diameter_measurements";
+      conventionId: MeasurementConventionId;
+      problem: "missing" | "ambiguous";
+    };
 
 // --- Recommendation Set (CONTEXT.md: RECOMMENDATION-state entries only) ---
 
@@ -643,6 +713,37 @@ export interface DecisionExecutionTrace {
    * them -- nothing is discarded regardless of which pathway (if any) matched (issue #17). */
   clinicalPathwayGates: ClinicalPathwayGateResult[];
   pathwaySelection: PathwaySelection;
+  /** ADR-0012 §4: present only when the matched pathway has at least one bound Clinical
+   * Disposition Rule. Absent for every other pathway and every historical Release. */
+  clinicalDispositionEvaluation?: ClinicalDispositionEvaluation;
   sourceEvaluationOutcomes: SourceEvaluationOutcome[];
   recommendationSet: RecommendationSet;
+}
+
+/** ADR-0012 §4: one bound Clinical Disposition Rule's three-valued classification. */
+export interface ClinicalDispositionRuleResult {
+  ruleId: string;
+  revisionId: string;
+  state: ClinicalPathwayGateState;
+  missingFields: string[];
+}
+
+/** ADR-0012 §3: the terminal clinician-directed disposition carried in the trace. Never in the
+ * Recommendation Set, never attributed to a Recommendation Source. */
+export interface ClinicalDisposition extends ClinicalDispositionContent {
+  ruleId: string;
+  revisionId: string;
+  provenance: Provenance;
+}
+
+export interface ClinicalDispositionEvaluation {
+  /** One entry per disposition rule bound to the matched pathway; always all of them. */
+  rules: ClinicalDispositionRuleResult[];
+  state: "DISPOSITION" | "NONE_MATCHED" | "INSUFFICIENT_INPUT";
+  /** Present iff state === "DISPOSITION". */
+  disposition?: ClinicalDisposition;
+  /** Present iff state === "INSUFFICIENT_INPUT" (ADR-0012 §6). */
+  unresolvedRequiredInputs?: UnresolvedRequiredInput[];
+  /** Human-readable explanation of why source evaluation did or did not occur; never parsed. */
+  reason: string;
 }

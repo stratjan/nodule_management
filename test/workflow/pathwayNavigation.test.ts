@@ -14,7 +14,9 @@ import {
   isMultipleSubsolidShape,
   isMultipleSolidLt6mmShape,
   isMultipleSolidGte6mmShape,
+  isMultipleSolidGte6mmFirstFollowUpShape,
   pathwayStepOutOfScopeReason,
+  requiresFirstFollowUpOriginAnswer,
   shouldClearGr4FollowUpFields,
 } from "../../src/workflow/pathwayNavigation";
 import {
@@ -57,8 +59,12 @@ describe("canContinuePastPathwayStep", () => {
       assessment_context: "incidental",
       assessment_timepoint: "follow-up",
       nodule_count: 1,
+      fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
     };
     expect(canContinuePastPathwayStep(followUpPathway)).toBe(true);
+    // issue #16 Candidate D (sign-off 6376704317 B): the origin must be answered first.
+    const { fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: _origin, ...unanswered } = followUpPathway;
+    expect(canContinuePastPathwayStep(unanswered)).toBe(false);
   });
 });
 
@@ -240,10 +246,13 @@ describe("pathwayStepOutOfScopeReason (issue #16 Candidate A, replaces isNoduleC
     expect(pathwayStepOutOfScopeReason({ nodule_count: 2 })).toBeNull();
   });
 
-  it("case 28: follow-up timepoint with multiple nodules -> multiple-follow-up", () => {
+  it("case 28 (updated for #16 Candidate D readiness P3-3): follow-up timepoint with multiple nodules -> multiple-follow-up once the origin is explicitly false; no reason yet while it is unanswered", () => {
+    expect(
+      pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false }),
+    ).toBe("multiple-follow-up");
     expect(
       pathwayStepOutOfScopeReason({ ...validMultipleSubsolid, assessment_timepoint: "follow-up" }),
-    ).toBe("multiple-follow-up");
+    ).toBeNull();
   });
 
   it("Candidate-B expansion: F2 false alone is pending; an explicitly mixed set is out of scope", () => {
@@ -553,9 +562,9 @@ describe("issue #16 Candidate B workflow/reset", () => {
     expect(
       canContinuePastPathwayStep({ ...validB, fleischner_multiple_solid_all_lt_6mm: false }),
     ).toBe(true);
-    expect(pathwayStepOutOfScopeReason({ ...validB, assessment_timepoint: "follow-up" })).toBe(
-      "multiple-follow-up",
-    );
+    expect(
+      pathwayStepOutOfScopeReason({ ...validB, assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false }),
+    ).toBe("multiple-follow-up");
     expect(
       pathwayStepOutOfScopeReason({ ...validB, multiple_nodules_discrete_circumscribed: false }),
     ).toBe("multiple-disseminated");
@@ -757,9 +766,9 @@ describe("issue #16 Candidate C workflow/reset (final spec 6264850117 cases 20-2
     expect(pathwayStepOutOfScopeReason({ ...shapeC, multiple_nodules_all_solid: false })).toBe(
       "multiple-mixed-solid-subsolid",
     );
-    expect(pathwayStepOutOfScopeReason({ ...shapeC, assessment_timepoint: "follow-up" })).toBe(
-      "multiple-follow-up",
-    );
+    expect(
+      pathwayStepOutOfScopeReason({ ...shapeC, assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false }),
+    ).toBe("multiple-follow-up");
     expect(
       pathwayStepOutOfScopeReason({ ...shapeC, multiple_nodules_discrete_circumscribed: false }),
     ).toBe("multiple-disseminated");
@@ -870,6 +879,255 @@ describe("issue #16 Candidate C workflow/reset (final spec 6264850117 cases 20-2
       ["immunocompromised", true],
     ] as const) {
       expect(edit(validC, id, value)).toEqual({ ...validC, [id]: value });
+    }
+  });
+});
+
+describe("issue #16 Candidate D workflow/reset (final spec 6411027075 §7.2, §8, cases 38-44; readiness 6614358295 P3-1/P3-2/P3-3)", () => {
+  const OR = "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed";
+  const SG = "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management";
+  const OM = "clinician_decides_no_further_routine_nodule_surveillance";
+  const RK = "fleischner_multiple_solid_risk_category";
+  const applicability = { age: 60, known_malignancy_history: false, immunocompromised: false };
+  const shapeD: ClinicalInputState = { assessment_context: "incidental", assessment_timepoint: "follow-up", [OR]: true };
+  const validD: ClinicalInputState = { ...shapeD, ...applicability, [SG]: true, [OM]: false, [RK]: "high" };
+  const shapeC: ClinicalInputState = {
+    assessment_context: "incidental",
+    assessment_timepoint: "initial",
+    nodule_count: 3,
+    multiple_nodules_all_subsolid: false,
+    multiple_nodules_all_solid: true,
+    multiple_nodules_discrete_circumscribed: true,
+    fleischner_multiple_solid_all_lt_6mm: false,
+  };
+
+  /** Mirrors App.tsx handleChange, including the previous state (readiness P3-1). */
+  function edit(prev: ClinicalInputState, id: string, value: string | number | boolean | undefined) {
+    return applyNoduleCountBranchReset(applyGr4FollowUpReset({ ...prev, [id]: value }, id, value), id, value, prev);
+  }
+  const defined = (state: ClinicalInputState) =>
+    Object.fromEntries(Object.entries(state).filter(([, value]) => value !== undefined));
+
+  it("case 38: every incidental follow-up must answer the origin first; the GR-8 shape continues with no count; out-of-scope reasons per origin (P3-3)", () => {
+    const solitaryFollowUp: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+    };
+    const multipleFollowUp: ClinicalInputState = {
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 3,
+      multiple_nodules_all_subsolid: false,
+      multiple_nodules_all_solid: true,
+      multiple_nodules_discrete_circumscribed: true,
+      fleischner_multiple_solid_all_lt_6mm: false,
+    };
+    expect(canContinuePastPathwayStep(solitaryFollowUp)).toBe(false);
+    expect(canContinuePastPathwayStep(multipleFollowUp)).toBe(false);
+    expect(canContinuePastPathwayStep({ ...solitaryFollowUp, [OR]: false })).toBe(true);
+    expect(canContinuePastPathwayStep(shapeD)).toBe(true);
+    expect(canContinuePastPathwayStep({ ...shapeD, nodule_count: 3 })).toBe(true);
+    expect(canContinuePastPathwayStep({ assessment_context: "incidental", assessment_timepoint: "follow-up" })).toBe(false);
+    expect(pathwayStepOutOfScopeReason(shapeD)).toBeNull();
+    expect(pathwayStepOutOfScopeReason({ ...shapeD, nodule_count: 3 })).toBeNull();
+    expect(pathwayStepOutOfScopeReason(multipleFollowUp)).toBeNull();
+    expect(pathwayStepOutOfScopeReason({ ...multipleFollowUp, [OR]: false })).toBe("multiple-follow-up");
+    expect(canContinuePastPathwayStep({ ...multipleFollowUp, [OR]: false })).toBe(false);
+    // initial assessments are never asked the origin
+    expect(requiresFirstFollowUpOriginAnswer({ assessment_context: "incidental", assessment_timepoint: "initial" })).toBe(false);
+    expect(canContinuePastPathwayStep(shapeC)).toBe(true);
+  });
+
+  it("case 39: the GR-8 shape mirrors GR-8 exactly and is independent of count and morphology", () => {
+    expect(isMultipleSolidGte6mmFirstFollowUpShape(shapeD)).toBe(true);
+    for (const stray of [{ nodule_count: 1 }, { nodule_count: 4 }, { nodule_morphology: "part-solid" }, { multiple_nodules_all_solid: false }]) {
+      expect(isMultipleSolidGte6mmFirstFollowUpShape({ ...shapeD, ...stray })).toBe(true);
+    }
+    for (const breaker of [
+      { [OR]: false },
+      { [OR]: undefined },
+      { assessment_timepoint: "initial" },
+      { assessment_timepoint: undefined },
+      { assessment_context: "screening" },
+    ]) {
+      expect(isMultipleSolidGte6mmFirstFollowUpShape({ ...shapeD, ...breaker })).toBe(false);
+    }
+    expect(requiresFirstFollowUpOriginAnswer(shapeD)).toBe(true);
+  });
+
+  it("case 40: each §8 edit deletes exactly the listed fields", () => {
+    // leavesGr8 via timepoint/context: SG, OM, RK and OR itself
+    expect(defined(edit(validD, "assessment_timepoint", "initial"))).toEqual({
+      assessment_context: "incidental",
+      assessment_timepoint: "initial",
+      ...applicability,
+    });
+    expect(defined(edit(validD, "assessment_context", undefined))).toEqual({
+      assessment_timepoint: "follow-up",
+      ...applicability,
+    });
+    // OR away from true: SG, OM, RK
+    for (const value of [false, undefined]) {
+      expect(defined(edit(validD, OR, value))).toEqual(
+        defined({ assessment_context: "incidental", assessment_timepoint: "follow-up", [OR]: value, ...applicability }),
+      );
+    }
+    // OR -> true: the current-appearance facts and the S3 follow-up fields
+    const solitaryFollowUp: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      [OR]: false,
+      nodule_size_mm: 7,
+      nodule_volume_mm3: 150,
+      nodule_diameter_measurements: [{ valueMm: 7, conventionId: "fleischner-2017-average-diameter" }],
+      solid_component_diameter_measurements: [{ valueMm: 3, conventionId: "fleischner-2017-solid-component-long-axis" }],
+      multiple_nodules_all_subsolid: false,
+      multiple_nodules_all_solid: true,
+      multiple_nodules_discrete_circumscribed: true,
+      fleischner_multiple_subsolid_any_gte_6mm: true,
+      fleischner_multiple_solid_all_lt_6mm: false,
+      s3_volume_stability_criterion_met: true,
+      s3_vdt_days: 700,
+      s3_general_condition_precludes_further_workup_or_therapy: false,
+      ...applicability,
+    };
+    expect(defined(edit(solitaryFollowUp, OR, true))).toEqual({ ...shapeD, ...applicability });
+    // cascade: SG away from true -> OM, RK; OM away from false -> RK
+    for (const value of [false, undefined]) {
+      expect(defined(edit(validD, SG, value))).toEqual(defined({ ...shapeD, ...applicability, [SG]: value }));
+    }
+    for (const value of [true, undefined]) {
+      expect(defined(edit(validD, OM, value))).toEqual(defined({ ...shapeD, ...applicability, [SG]: true, [OM]: value }));
+    }
+  });
+
+  it("case 41 (P3-1, shared-field rule): on an established GR-8 episode, count/set-fact edits and re-affirming the GR-8 facts -- including the origin itself -- never delete SG, OM or RK", () => {
+    for (const [id, value] of [
+      ["nodule_count", 1],
+      ["nodule_count", 3],
+      ["nodule_count", undefined],
+      ["multiple_nodules_all_subsolid", true],
+      ["multiple_nodules_all_subsolid", false],
+      ["multiple_nodules_all_subsolid", undefined],
+      ["multiple_nodules_all_solid", false],
+      ["multiple_nodules_all_solid", undefined],
+      ["multiple_nodules_discrete_circumscribed", false],
+      ["fleischner_multiple_solid_all_lt_6mm", true],
+      ["fleischner_multiple_solid_all_lt_6mm", undefined],
+      ["assessment_context", "incidental"],
+      ["assessment_timepoint", "follow-up"],
+      [OR, true],
+      [SG, true],
+      [OM, false],
+      [RK, "low"],
+      ["age", 70],
+    ] as const) {
+      const next = edit(validD, id, value);
+      expect(next[SG], `${id}=${String(value)}`).toBe(true);
+      expect(next[OM], `${id}=${String(value)}`).toBe(false);
+      expect(next[RK], `${id}=${String(value)}`).toBe(id === RK ? value : "high");
+      expect(next[OR], `${id}=${String(value)}`).toBe(true);
+    }
+  });
+
+  it("P3-1: without the previous state, a timepoint re-affirmation is treated as a real change (conservative default); with it, it is a no-op", () => {
+    const withoutPrevious = applyNoduleCountBranchReset({ ...validD }, "assessment_timepoint", "follow-up");
+    expect(withoutPrevious[SG]).toBeUndefined();
+    expect(withoutPrevious[RK]).toBeUndefined();
+    expect(applyNoduleCountBranchReset({ ...validD }, "assessment_timepoint", "follow-up", validD)).toEqual(validD);
+  });
+
+  it("case 41 (origin identity): current count/set edits never clear the historical origin", () => {
+    let state = validD;
+    for (const [id, value] of [
+      ["nodule_count", 1],
+      ["nodule_count", 4],
+      ["multiple_nodules_all_solid", false],
+      ["nodule_morphology", "pure-ground-glass"],
+    ] as const) {
+      state = edit(state, id, value);
+      expect(state[OR]).toBe(true);
+    }
+  });
+
+  it("case 42: Candidate C (safeguard set) -> timepoint follow-up -> origin true leaves the safeguard absent; it is never resurrected across exit/re-entry", () => {
+    for (const safeguard of [true, false]) {
+      const c = { ...shapeC, ...applicability, [SG]: safeguard };
+      const followUp = edit(c, "assessment_timepoint", "follow-up");
+      expect(followUp[SG]).toBeUndefined();
+      const d = edit(followUp, OR, true);
+      expect(d[SG]).toBeUndefined();
+      const answered = edit(edit(edit(d, SG, true), OM, false), RK, "low");
+      const reentered = edit(edit(answered, OR, false), OR, true);
+      expect(reentered[SG]).toBeUndefined();
+      expect(reentered[OM]).toBeUndefined();
+      expect(reentered[RK]).toBeUndefined();
+    }
+  });
+
+  it("case 42 (P3-2, raw stale state): a genuine GR-7/initial -> GR-8/follow-up transition clears a stale Candidate-C safeguard even when a stray origin=true was already present", () => {
+    const staleC: ClinicalInputState = {
+      ...shapeC,
+      ...applicability,
+      [SG]: true,
+      [OR]: true,
+      [OM]: false,
+      [RK]: "high",
+    };
+    const next = edit(staleC, "assessment_timepoint", "follow-up");
+    expect(isMultipleSolidGte6mmFirstFollowUpShape(next)).toBe(true);
+    expect(next[SG]).toBeUndefined();
+    expect(next[OM]).toBeUndefined();
+    expect(next[RK]).toBeUndefined();
+  });
+
+  it("case 42 (P3-2): the shared-field exemption is limited to count/set facts -- a context edit away from incidental is never exempt", () => {
+    const next = edit(validD, "assessment_context", "screening");
+    for (const key of [SG, OM, RK, OR] as const) expect(next[key]).toBeUndefined();
+  });
+
+  it("GR-8 cascade is a state invariant: no edit order leaves OM without SG=true or RK without SG=true and OM=false", () => {
+    const raw: ClinicalInputState = { ...shapeD, [SG]: false, [OM]: true, [RK]: "high" };
+    const next = edit(raw, "age", 70);
+    expect(next[OM]).toBeUndefined();
+    expect(next[RK]).toBeUndefined();
+    const rawOm: ClinicalInputState = { ...shapeD, [SG]: true, [OM]: true, [RK]: "low" };
+    expect(edit(rawOm, "age", 70)[RK]).toBeUndefined();
+  });
+
+  it("case 43: a solitary follow-up with S3 fields set -> origin true clears the S3 follow-up fields", () => {
+    const solitary: ClinicalInputState = {
+      nodule_morphology: "solid",
+      assessment_context: "incidental",
+      assessment_timepoint: "follow-up",
+      nodule_count: 1,
+      [OR]: false,
+      s3_volume_stability_criterion_met: true,
+      s3_vdt_days: 700,
+      s3_general_condition_precludes_further_workup_or_therapy: true,
+    };
+    const next = edit(solitary, OR, true);
+    expect(next.s3_volume_stability_criterion_met).toBeUndefined();
+    expect(next.s3_vdt_days).toBeUndefined();
+    expect(next.s3_general_condition_precludes_further_workup_or_therapy).toBeUndefined();
+    expect(shouldClearGr4FollowUpFields(OR, true)).toBe(true);
+    expect(shouldClearGr4FollowUpFields(OR, undefined)).toBe(true);
+    expect(shouldClearGr4FollowUpFields(OR, false)).toBe(false);
+  });
+
+  it("case 44: off GR-8 the new fields' reset rules never touch Candidate A/B/C state", () => {
+    const validB: ClinicalInputState = { ...shapeC, fleischner_multiple_solid_all_lt_6mm: true, [RK]: "high" };
+    for (const [id, value] of [
+      ["assessment_timepoint", "initial"],
+      ["assessment_context", "incidental"],
+      ["nodule_count", 4],
+      ["age", 70],
+    ] as const) {
+      expect(edit(validB, id, value)).toEqual({ ...validB, [id]: value });
     }
   });
 });

@@ -53,6 +53,7 @@ const clinicalPathwayIdSchema = z.enum([
   "incidental-multiple-subsolid-initial",
   "incidental-multiple-solid-lt-6mm-initial",
   "incidental-multiple-solid-gte-6mm-initial",
+  "incidental-multiple-solid-gte-6mm-first-follow-up",
 ]);
 
 export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
@@ -60,6 +61,29 @@ export const pathwayGateRevisionSchema = ruleRevisionBaseSchema
     kind: z.literal("pathway-gate"),
     clinicalPathwayId: clinicalPathwayIdSchema,
     conditions: z.array(conditionSchema).min(1),
+    provenance: provenanceSchema,
+  })
+  .strict();
+
+// ADR-0012 §3: closed disposition vocabulary -- mirrors ClinicalDispositionKind in types.ts.
+// Extend both together only by a new reviewed decision.
+const clinicalDispositionKindSchema = z.enum(["clinician-directed-no-further-routine-surveillance"]);
+
+// ADR-0012 §3 (issue #16 Candidate D): the fourth governed Rule Revision kind. clinicalPathwayId is
+// required (unlike Atomic Clinical Rules), conditions use the existing fixed vocabulary, and the
+// disposition content is closed -- no free-text reason, no recommendation form.
+export const clinicalDispositionRuleRevisionSchema = ruleRevisionBaseSchema
+  .extend({
+    kind: z.literal("clinical-disposition"),
+    clinicalPathwayId: clinicalPathwayIdSchema,
+    conditions: z.array(conditionSchema).min(1),
+    disposition: z
+      .object({
+        dispositionKind: clinicalDispositionKindSchema,
+        statement: z.string().min(1),
+        rationale: z.string().min(1),
+      })
+      .strict(),
     provenance: provenanceSchema,
   })
   .strict();
@@ -302,6 +326,7 @@ export const ruleRevisionSchema = z
     pathwayGateRevisionSchema,
     sourceApplicabilityRevisionSchema,
     atomicClinicalRuleRevisionSchema,
+    clinicalDispositionRuleRevisionSchema,
   ])
   .refine(
     (rule) =>
@@ -500,7 +525,7 @@ export const releaseManifestSchema = z.object({
       z.object({
         ruleId: z.string().min(1),
         revisionId: z.string().min(1),
-        kind: z.enum(["pathway-gate", "source-applicability", "atomic-clinical-rule"]),
+        kind: z.enum(["pathway-gate", "source-applicability", "atomic-clinical-rule", "clinical-disposition"]),
         approvalEvent: approvalEventSchema,
       }),
     )

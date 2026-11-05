@@ -24,6 +24,7 @@ const followUpBaseInput: ClinicalInputState = {
   nodule_morphology: "solid",
   assessment_context: "incidental",
   assessment_timepoint: "follow-up",
+  fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
   nodule_count: 1,
   age: 55,
   known_malignancy_history: false,
@@ -207,5 +208,17 @@ describe("ACR-S3-FOLLOWUP-DISCHARGE-VOLUME-OR-VDT-r3 clinical regression matrix 
     const s3 = outcomeFor(trace, "s3");
     expect(s3?.recommendation && "provenanceAnchors" in s3.recommendation).toBe(true);
     expect(s3?.recommendation && "provenance" in s3.recommendation).toBe(false);
+  });
+});
+
+describe("issue #16 Candidate D (final spec §12 change 1): GR-4-r2 requires the episode origin", () => {
+  it("the same S3 follow-up input without an origin answer -> pathway INSUFFICIENT_INPUT; no S3 outcome is produced", () => {
+    const { fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: _origin, ...withoutOrigin } = followUpBaseInput;
+    const trace = evaluate({ ...withoutOrigin, s3_volume_stability_criterion_met: true }, release);
+    expect(trace.pathwaySelection).toEqual({ state: "INSUFFICIENT_INPUT" });
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-4")?.missingFields).toEqual([
+      "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed",
+    ]);
+    expect(trace.sourceEvaluationOutcomes).toEqual([]);
   });
 });

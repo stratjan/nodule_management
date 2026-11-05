@@ -6,6 +6,7 @@ export {
   evaluate,
   AmbiguousRuleMatchError,
   AmbiguousPathwayMatchError,
+  AmbiguousClinicalDispositionMatchError,
   ENGINE_VERSION,
   SCHEMA_VERSION,
 } from "./evaluate";

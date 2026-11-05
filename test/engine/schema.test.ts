@@ -38,6 +38,10 @@ const RULE_FILES = [
   "clinical/rules/recommendations/fleischner-multiple-solid-lt6mm-high-risk.json",
   "clinical/rules/pathway/gr-7-incidental-multiple-solid-gte-6mm-initial.json",
   "clinical/rules/recommendations/fleischner-multiple-solid-gte6mm-initial.json",
+  "clinical/rules/pathway/gr-8-incidental-multiple-solid-gte-6mm-first-follow-up.json",
+  "clinical/rules/disposition/cdr-1-incidental-multiple-solid-gte-6mm-first-follow-up-no-further-routine-surveillance.json",
+  "clinical/rules/recommendations/fleischner-multiple-solid-gte6mm-first-follow-up-low-risk.json",
+  "clinical/rules/recommendations/fleischner-multiple-solid-gte6mm-first-follow-up-high-risk.json",
 ];
 
 describe("clinical rule JSON validates against the schema", () => {

@@ -1,6 +1,7 @@
 // Wizard question sequencing/navigation for this one pathway (ADR-0006 repo layout).
 // Zero clinical logic here -- only which fields to ask, in what order, and how to render
 // them. All actual evaluation happens in src/engine.
+import type { ClinicalDispositionKind } from "../engine/types";
 
 export interface SelectFieldDef {
   id: "nodule_morphology" | "assessment_context" | "assessment_timepoint" | "fleischner_multiple_solid_risk_category";
@@ -33,7 +34,9 @@ export interface BooleanFieldDef {
     | "fleischner_multiple_subsolid_any_gte_6mm"
     | "multiple_nodules_all_solid"
     | "fleischner_multiple_solid_all_lt_6mm"
-    | "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management";
+    | "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management"
+    | "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed"
+    | "clinician_decides_no_further_routine_nodule_surveillance";
   label: string;
   type: "boolean";
 }
@@ -213,3 +216,43 @@ export const FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT =
  * redirect, no solitary evaluation, no lesion identity, no alternative management. */
 export const FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE =
   "Solitary-nodule-directed management is outside this bounded multiple-nodule pathway and is not evaluated here.";
+
+/** Step 1, every incidental follow-up (issue #16 Candidate D, HITL 6338095264 Q2; sign-off
+ * 6376704317 B): the episode-origin attestation GR-8 (true) and GR-4-r2 (false) gate on. Identity
+ * only -- asks how this episode started, never about the current appearance. */
+export const firstFollowUpOriginField: FieldDef = {
+  id: "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed",
+  label:
+    "First follow-up after an initial Fleischner multiple solid nodule assessment with at least one nodule ≥6 mm, for which CT at 3–6 months was intended (Yes / No)",
+  type: "boolean",
+};
+
+export const FIRST_FOLLOW_UP_ORIGIN_HELP_TEXT =
+  "Answer about how this episode started. \"Yes\" does not state that the nodules are still multiple, solid, 6 mm or larger, stable, or persistent at this examination.";
+
+/** Step 2, GR-8 shape only, once the safeguard is confirmed (issue #16 Candidate D, HITL Q3;
+ * ADR-0012 §3): the clinician's own terminal decision. Source-neutral; never a Fleischner rule. */
+export const clinicianDispositionFields: FieldDef[] = [
+  {
+    id: "clinician_decides_no_further_routine_nodule_surveillance",
+    label:
+      "Clinician-directed decision: based on the current interval imaging findings and overall clinical context, I decide that no further routine pulmonary nodule surveillance is planned (Yes = no further routine surveillance planned; No = continue to the Fleischner 18–24-month guidance)",
+    type: "boolean",
+  },
+];
+
+/** issue #16 Candidate D sign-off D1: examples only -- never criteria, thresholds, or Fleischner
+ * stop rules. */
+export const CLINICIAN_DISPOSITION_HELP_TEXT =
+  "Examples of interval findings that may inform this decision include clear regression or radiographic resolution of the nodules. These are examples only: they are not criteria or thresholds, they are not Fleischner stop rules, the app calculates no change, and your decision is not limited to them.";
+
+/** issue #16 Candidate D sign-off D2: follow-up examples for the existing safeguard -- examples only,
+ * no alternative management listed, no redirect. */
+export const FLEISCHNER_MULTIPLE_SOLID_FOLLOW_UP_SAFEGUARD_HELP_TEXT =
+  "At follow-up, examples of what may make an individual nodule more suspicious include interval growth or new or changed suspicious features. These are examples only, not criteria; this app does not identify any such nodule, list alternative management, or redirect to another pathway.";
+
+/** issue #16 Candidate D (HITL Q3 heading): presentation-only heading per closed disposition kind. */
+export const CLINICAL_DISPOSITION_HEADINGS: Record<ClinicalDispositionKind, string> = {
+  "clinician-directed-no-further-routine-surveillance":
+    "Clinician-directed disposition: No further routine nodule surveillance planned.",
+};

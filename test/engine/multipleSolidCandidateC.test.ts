@@ -68,6 +68,7 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
         "GR-5": "NOT_MATCHED",
         "GR-6": "NOT_MATCHED",
         "GR-7": "MATCHED",
+        "GR-8": "NOT_MATCHED",
       });
     }
   });
@@ -102,7 +103,7 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
       { multiple_nodules_all_solid: false },
       { multiple_nodules_discrete_circumscribed: false },
       { assessment_context: "screening" },
-      { assessment_timepoint: "follow-up" },
+      { assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false },
     ]) {
       const trace = evaluate({ ...confirmed, ...override }, release);
       expect(gateStates(trace)["GR-7"]).toBe("NOT_MATCHED");
@@ -110,6 +111,12 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
       expect(trace.sourceEvaluationOutcomes).toHaveLength(0);
       expect(trace.recommendationSet).toEqual([]);
     }
+    // issue #16 Candidate D (final spec §14): origin unanswered at follow-up -> fail-closed pathway
+    // INSUFFICIENT_INPUT, never GR-7 and never a Candidate-C recommendation.
+    const unanswered = evaluate({ ...confirmed, assessment_timepoint: "follow-up" }, release);
+    expect(gateStates(unanswered)["GR-7"]).toBe("NOT_MATCHED");
+    expect(unanswered.pathwaySelection).toEqual({ state: "INSUFFICIENT_INPUT" });
+    expect(unanswered.recommendationSet).toEqual([]);
   });
 
   it("case 3b: contradictory stale all_subsolid=true with all_solid=true -> GR-7 NOT_MATCHED, GR-5 governs by its own conditions", () => {
@@ -148,7 +155,7 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
     }
   });
 
-  it("case 6: solitary and Candidate-A inputs keep GR-7 NOT_MATCHED; the trace carries 7 gates", () => {
+  it("case 6: solitary and Candidate-A inputs keep GR-7 NOT_MATCHED; the trace carries 8 gates (GR-8 since #16 Candidate D)", () => {
     const applicability = { age: 55, known_malignancy_history: false, immunocompromised: false };
     for (const input of [
       {
@@ -163,6 +170,7 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
         nodule_morphology: "solid",
         assessment_context: "incidental",
         assessment_timepoint: "follow-up",
+        fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
         nodule_count: 1,
         s3_volume_stability_criterion_met: true,
         ...applicability,
@@ -178,7 +186,7 @@ describe("#16 Candidate C — GR-7 pathway selection (cases 1-6)", () => {
       },
     ] satisfies ClinicalInputState[]) {
       const trace = evaluate(input, release);
-      expect(trace.clinicalPathwayGates).toHaveLength(7);
+      expect(trace.clinicalPathwayGates).toHaveLength(8);
       expect(gateStates(trace)["GR-7"]).toBe("NOT_MATCHED");
       expect(trace.pathwaySelection.state).toBe("MATCHED");
     }
@@ -356,7 +364,9 @@ describe("#16 Candidate C — negative clinical assertions (cases 15-19)", () =>
       "fleischner_multiple_solid_all_lt_6mm",
       "fleischner_multiple_solid_risk_category",
     ];
-    expect(fieldNames).toEqual([...v180Keys, SAFEGUARD]);
+    // issue #16 Candidate D appends its two keys after the safeguard (asserted in
+    // multipleSolidCandidateD.test.ts case 29); Candidate C's own contribution is unchanged.
+    expect(fieldNames.slice(0, v180Keys.length + 1)).toEqual([...v180Keys, SAFEGUARD]);
     expect(SAFEGUARD).not.toMatch(/risk|lesion|rank|dominant|largest|index/);
   });
 
@@ -377,12 +387,11 @@ describe("#16 Candidate C — negative clinical assertions (cases 15-19)", () =>
 });
 
 describe("#16 Candidate C — Release, governed JSON, SAR, versions (cases 32-34, 40)", () => {
-  it("case 32: the assembled Release has exactly 23 revisions, including GR-7-r1 and the Candidate-C ACR", () => {
-    expect(release.revisions).toHaveLength(23);
+  it("case 32: the assembled Release still includes GR-7-r1 and the Candidate-C ACR, unchanged (the exact revision count moved to multipleSolidCandidateD.test.ts)", () => {
     const ids = release.revisions.map((r) => r.revisionId);
     expect(ids).toContain("GR-7-r1");
     expect(ids).toContain(`${ACR_ID}-r1`);
-    expect(new Set(ids).size).toBe(23);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("case 33: GR-7 has exactly the approved identity and conditions, in order", () => {
@@ -454,11 +463,11 @@ describe("#16 Candidate C — Release, governed JSON, SAR, versions (cases 32-34
     ]);
   });
 
-  it("case 40: ENGINE_VERSION, SCHEMA_VERSION and trace versions are 1.9.0", () => {
-    expect(ENGINE_VERSION).toBe("1.9.0");
-    expect(SCHEMA_VERSION).toBe("1.9.0");
+  it("case 40 (updated for #16 Candidate D): ENGINE_VERSION, SCHEMA_VERSION and trace versions are the current 1.10.0", () => {
+    expect(ENGINE_VERSION).toBe("1.10.0");
+    expect(SCHEMA_VERSION).toBe("1.10.0");
     const trace = evaluate(confirmed, release);
-    expect(trace.engineVersion).toBe("1.9.0");
-    expect(trace.schemaVersion).toBe("1.9.0");
+    expect(trace.engineVersion).toBe("1.10.0");
+    expect(trace.schemaVersion).toBe("1.10.0");
   });
 });

@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import type {
   ApprovalEvent,
   AtomicClinicalRuleRevision,
+  ClinicalDispositionRuleRevision,
   ClinicalPathwayId,
   Condition,
   PathwayGateRevision,
@@ -19,6 +20,30 @@ function isPathwayGate(r: RuleRevision): r is PathwayGateRevision {
 }
 function isAtomicClinicalRule(r: RuleRevision): r is AtomicClinicalRuleRevision {
   return r.kind === "atomic-clinical-rule";
+}
+function isClinicalDisposition(r: RuleRevision): r is ClinicalDispositionRuleRevision {
+  return r.kind === "clinical-disposition";
+}
+
+/**
+ * ADR-0012 §3 (issue #16 Candidate D): a Clinical Disposition Rule's required clinicalPathwayId
+ * references no governed PathwayGateRevision present in this Release -- mirrors
+ * UnknownClinicalPathwayIdError, so a disposition bound to a mistyped or retired pathway is caught
+ * at build time instead of becoming silently unreachable.
+ */
+export class UnknownClinicalDispositionPathwayIdError extends Error {
+  constructor(
+    public readonly offending: ClinicalDispositionRuleRevision[],
+    public readonly knownGates: PathwayGateRevision[],
+  ) {
+    super(
+      `Release assembly rejected: ${offending.length} Clinical Disposition Rule(s) declare a ` +
+        `clinicalPathwayId with no matching Pathway Gate in this Release: ` +
+        offending.map((r) => `${r.ruleId}@${r.revisionId} (${r.clinicalPathwayId})`).join(", ") +
+        `. Known pathways: ${knownGates.map((g) => g.clinicalPathwayId).join(", ") || "(none)"}.`,
+    );
+    this.name = "UnknownClinicalDispositionPathwayIdError";
+  }
 }
 
 export class NonApprovedRevisionError extends Error {
@@ -138,6 +163,21 @@ function assertPathwayBindingsValid(revisions: RuleRevision[]): void {
     if (unbound.length > 0) {
       throw new UnboundAtomicRuleInMultiPathwayReleaseError(unbound);
     }
+  }
+}
+
+/** ADR-0012 §3: every Clinical Disposition Rule must be bound to a Pathway Gate in this Release.
+ * No release-time exclusivity proof between disposition rules -- the runtime
+ * AmbiguousClinicalDispositionMatchError (evaluate.ts) is the backstop, the same posture as for
+ * Atomic Clinical Rules. */
+function assertDispositionBindingsValid(revisions: RuleRevision[]): void {
+  const gates = revisions.filter(isPathwayGate);
+  const gateIds = new Set(gates.map((g) => g.clinicalPathwayId));
+  const unknownBound = revisions
+    .filter(isClinicalDisposition)
+    .filter((r) => !gateIds.has(r.clinicalPathwayId));
+  if (unknownBound.length > 0) {
+    throw new UnknownClinicalDispositionPathwayIdError(unknownBound, gates);
   }
 }
 
@@ -389,13 +429,15 @@ export function computeReleaseId(revisions: RuleRevision[]): string {
  * explicit approval event, UnknownClinicalPathwayIdError (issue #17) if a bound Atomic Clinical
  * Rule references no Pathway Gate present in the Release, UnboundAtomicRuleInMultiPathwayReleaseError
  * (issue #17) if a Release with more than one Pathway Gate contains any unbound Atomic Clinical
- * Rule, UnknownNonBlockingSiblingReferenceError or MismatchedNonBlockingSiblingScopeError (issue
+ * Rule, UnknownClinicalDispositionPathwayIdError (ADR-0012 §3, issue #16 Candidate D) if a
+ * Clinical Disposition Rule references no Pathway Gate present in the Release,
+ * UnknownNonBlockingSiblingReferenceError or MismatchedNonBlockingSiblingScopeError (issue
  * #30/ADR-0011) if a declared nonBlockingUnresolvedSiblings relation targets a revision absent
  * from this Release or one outside the declaring rule's own source/pathway scope, or
  * OverlappingRuleConditionsError (issue #20, rescoped by issue #17 to
  * (effectiveClinicalPathwayId, recommendationSourceId)) if two Approved Atomic Clinical Rules for
  * the same effective pathway and source have deterministically overlapping match conditions —
- * release assembly must physically refuse all seven (ADR-0007), never rely on a runtime filter (or
+ * release assembly must physically refuse all eight (ADR-0007), never rely on a runtime filter (or
  * a later non-null assertion) applied after the fact. The approval checks are independent of, and
  * in addition to, ruleRevisionSchema's own approval-event refinement — buildRuleSetRelease
  * enforces every invariant itself rather than trusting that every caller validated with the
@@ -416,6 +458,7 @@ export function buildRuleSetRelease(
   }
 
   assertPathwayBindingsValid(revisions);
+  assertDispositionBindingsValid(revisions);
   assertNonBlockingSiblingRelationsValid(revisions);
   assertNoOverlappingAtomicRules(revisions);
 
