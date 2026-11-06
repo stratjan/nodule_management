@@ -1,0 +1,35 @@
+{
+  "ruleId": "CDR-1",
+  "revisionId": "CDR-1-r1",
+  "kind": "clinical-disposition",
+  "clinicalPathwayId": "incidental-multiple-solid-gte-6mm-first-follow-up",
+  "approvalStatus": "Approved",
+  "approvalEvent": {
+    "by": "stratjan",
+    "at": "2026-11-03"
+  },
+  "conditions": [
+    {
+      "field": "fleischner_multiple_solid_no_individual_nodule_requires_solitary_management",
+      "op": "eq",
+      "value": true
+    },
+    {
+      "field": "clinician_decides_no_further_routine_nodule_surveillance",
+      "op": "eq",
+      "value": true
+    }
+  ],
+  "disposition": {
+    "dispositionKind": "clinician-directed-no-further-routine-surveillance",
+    "statement": "Based on the current interval imaging findings and overall clinical context, I decide that no further routine pulmonary nodule surveillance is planned.",
+    "rationale": "This records the clinician's decision based on the current interval imaging findings and overall clinical context. It is not a guideline recommendation and was not inferred by the application."
+  },
+  "provenance": {
+    "sourceDocument": "GitHub issue #16 (architecture report 6337918762; Clinical/Product HITL 6338095264 Q1/Q3; Candidate-D HITL sign-off 6376704317 D1; final spec 6411027075/6411027421; readiness sign-off 6614358295)",
+    "version": "issue #16 Candidate D final spec",
+    "originalLanguage": "English",
+    "sourceType": "Clinically-approved specification",
+    "locator": "HITL Q3 semantic contract and explanatory text (verbatim); Q1: terminal, source-independent, evaluated before any Source Applicability Rule, never attributed to Fleischner or any Recommendation Source, never NoRoutineFollowUpRecommendationContent. Can match only after the current governing-lesion safeguard is confirmed (Q3; ADR-0012 §3 clinical ordering in conditions). No free-text reason is stored. Not a Source Guideline citation."
+  }
+}

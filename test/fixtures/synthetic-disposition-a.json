@@ -1,0 +1,21 @@
+{
+  "ruleId": "TEST-SYNTHETIC-DISPOSITION-A",
+  "revisionId": "TEST-SYNTHETIC-DISPOSITION-A-r1",
+  "kind": "clinical-disposition",
+  "clinicalPathwayId": "incidental-multiple-solid-gte-6mm-first-follow-up",
+  "approvalStatus": "Approved",
+  "approvalEvent": { "by": "test", "at": "2026-01-01" },
+  "conditions": [{ "field": "test_only_disposition_flag", "op": "eq", "value": true }],
+  "disposition": {
+    "dispositionKind": "clinician-directed-no-further-routine-surveillance",
+    "statement": "test fixture statement -- not a real clinical decision",
+    "rationale": "test fixture rationale -- not a real clinical decision"
+  },
+  "provenance": {
+    "sourceDocument": "test fixture -- not a real clinical source",
+    "version": "n/a",
+    "originalLanguage": "English",
+    "sourceType": "Synthetic test fixture",
+    "locator": "test/fixtures/synthetic-disposition-a.json"
+  }
+}

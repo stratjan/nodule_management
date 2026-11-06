@@ -37,10 +37,11 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(7);
+    expect(trace.clinicalPathwayGates).toHaveLength(8);
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-7")?.state).toBe("NOT_MATCHED");
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-8")?.state).toBe("NOT_MATCHED");
   });
 
   it("pure-ground-glass input selects incidental-solitary-pure-ggn-initial", () => {
@@ -76,10 +77,11 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-part-solid-initial",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(7);
+    expect(trace.clinicalPathwayGates).toHaveLength(8);
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-7")?.state).toBe("NOT_MATCHED");
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-8")?.state).toBe("NOT_MATCHED");
   });
 
   it("solid follow-up input selects incidental-solitary-solid-follow-up (issue #15 Candidate A0)", () => {
@@ -87,6 +89,7 @@ describe("pathway selection: real GR-1/GR-2", () => {
       nodule_morphology: "solid",
       assessment_context: "incidental",
       assessment_timepoint: "follow-up",
+      fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
       nodule_count: 1,
       ...baseApplicability,
       s3_volume_stability_criterion_met: true,
@@ -96,10 +99,12 @@ describe("pathway selection: real GR-1/GR-2", () => {
       state: "MATCHED",
       clinicalPathwayId: "incidental-solitary-solid-follow-up",
     });
-    expect(trace.clinicalPathwayGates).toHaveLength(7);
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-4")?.revisionId).toBe("GR-4-r2");
+    expect(trace.clinicalPathwayGates).toHaveLength(8);
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-5")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-6")?.state).toBe("NOT_MATCHED");
     expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-7")?.state).toBe("NOT_MATCHED");
+    expect(trace.clinicalPathwayGates.find((g) => g.ruleId === "GR-8")?.state).toBe("NOT_MATCHED");
   });
 
   it("GR-4 never co-matches GR-1/GR-2/GR-3 -- assessment_timepoint's initial/follow-up values are mutually exclusive by construction", () => {
@@ -115,6 +120,7 @@ describe("pathway selection: real GR-1/GR-2", () => {
       nodule_morphology: "solid",
       assessment_context: "incidental",
       assessment_timepoint: "follow-up",
+      fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
       nodule_count: 1,
       ...baseApplicability,
       s3_volume_stability_criterion_met: true,
@@ -276,6 +282,7 @@ describe("cross-pathway Atomic Clinical Rule isolation (issue #17)", () => {
       nodule_morphology: "solid",
       assessment_context: "incidental",
       assessment_timepoint: "follow-up",
+      fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
       nodule_count: 1,
       ...baseApplicability,
       s3_volume_stability_criterion_met: true,

@@ -19,6 +19,11 @@ import {
   multipleSolidGte6mmSafeguardFields,
   FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT,
   FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE,
+  firstFollowUpOriginField,
+  FIRST_FOLLOW_UP_ORIGIN_HELP_TEXT,
+  clinicianDispositionFields,
+  CLINICIAN_DISPOSITION_HELP_TEXT,
+  FLEISCHNER_MULTIPLE_SOLID_FOLLOW_UP_SAFEGUARD_HELP_TEXT,
 } from "../workflow/fields";
 import type { FieldDef } from "../workflow/fields";
 import {
@@ -28,14 +33,21 @@ import {
   isMultipleSubsolidShape,
   isMultipleSolidLt6mmShape,
   isMultipleSolidGte6mmShape,
+  isMultipleSolidGte6mmFirstFollowUpShape,
+  gr8RenderedFields,
   pathwayStepOutOfScopeReason,
+  requiresFirstFollowUpOriginAnswer,
+  showsGr8ClinicianDisposition,
+  showsGr8FleischnerRisk,
   showsSolitarySafeguardNotConfirmedNotice,
 } from "../workflow/pathwayNavigation";
 import type { PathwayStepOutOfScopeReason } from "../workflow/pathwayNavigation";
+import { guidedCompleteness, unresolvedFieldIds } from "../workflow/guidedCompleteness";
 import { parseWholeMmDiameter } from "../workflow/wholeMmInput";
 import { FieldInput } from "./FieldInput";
 import { RecommendationView } from "./RecommendationView";
 import { FleischnerRiskDecisionSupport } from "./FleischnerRiskDecisionSupport";
+import { ClinicalDispositionView } from "./ClinicalDispositionView";
 
 type FieldValue = string | number | boolean | undefined;
 type Step = "pathway" | "clinical-details" | "results";
@@ -55,21 +67,23 @@ const OUTCOME_LABELS: Record<string, string> = {
 // issue #16 Candidate A: reason-specific out-of-scope notices for the multiple-nodule branch --
 // navigation only; the engine's Clinical Pathway Gates remain the clinical authority.
 const OUT_OF_SCOPE_NOTICES: Record<PathwayStepOutOfScopeReason, string> = {
-  "multiple-follow-up": "Follow-up assessment of multiple nodules is not covered by this Rule-Set Release.",
+  "multiple-follow-up":
+    "Follow-up assessment of multiple nodules is covered by this Rule-Set Release only as the first follow-up after an initial Fleischner multiple solid nodule assessment with at least one nodule ≥6 mm.",
   "multiple-mixed-solid-subsolid":
     "Sets mixing fully solid and subsolid nodules are not covered by this Rule-Set Release.",
   "multiple-disseminated":
     "Disseminated, diffuse, miliary, or metastatic-pattern presentations are outside this tool's scope.",
 };
 
-// issue #16 Candidate A: nodule_count is asked first so the solitary/multiple branch is known
-// before morphology (solitary) or the set-level facts (multiple) are asked. Render order only --
-// the field definitions themselves are unchanged.
+// issue #16 Candidate D (final spec §7.4): context and timepoint are asked first, then -- for every
+// incidental follow-up -- the episode origin, then nodule_count (unless the GR-8 shape holds, which
+// needs no count), then the branch fields: morphology (solitary) or the set-level facts (multiple).
+// Render order only -- the field definitions themselves are unchanged.
 const noduleCountField = pathwayFields.find((field) => field.id === "nodule_count") as FieldDef;
-const solitaryPathwayFields = pathwayFields.filter((field) => field.id !== "nodule_count");
-const multipleCommonPathwayFields = pathwayFields.filter(
+const commonPathwayFields = pathwayFields.filter(
   (field) => field.id === "assessment_context" || field.id === "assessment_timepoint",
 );
+const solitaryPathwayFields = pathwayFields.filter((field) => field.id === "nodule_morphology");
 const multipleAllSubsolidField = multipleSubsolidPathwayFields.find(
   (field) => field.id === "multiple_nodules_all_subsolid",
 ) as FieldDef;
@@ -98,11 +112,16 @@ export function App() {
   const handleChange = (id: string, value: FieldValue) => {
     setInput((prev) => {
       const next: ClinicalInputState = { ...prev, [id]: value };
-      return applyNoduleCountBranchReset(applyGr4FollowUpReset(next, id, value), id, value);
+      return applyNoduleCountBranchReset(applyGr4FollowUpReset(next, id, value), id, value, prev);
     });
     // issue #16 Candidate A: leaving the solitary branch invalidates every solitary-only UI-local
     // measurement affirmation, same never-carry-over invariant as the ClinicalInputState reset.
-    if (id === "nodule_count" && value !== 1) {
+    // issue #16 Candidate D: entering the GR-8 branch (origin true) likewise drops every
+    // solitary-only measurement affirmation -- the branch asks no measurement at all.
+    if (
+      (id === "nodule_count" && value !== 1) ||
+      (id === "fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed" && value === true)
+    ) {
       setFleischnerConventionConfirmed(false);
       setSolidComponentSizeMm(undefined);
       setSolidComponentConventionConfirmed(false);
@@ -161,11 +180,13 @@ export function App() {
   // issue #15 Candidate A0: the S3 criterion question is shown only for the exact pathway shape
   // GR-4 gates on (solid/incidental/follow-up/solitary) -- never for part-solid or pure-GGN
   // follow-up-shaped input, which this Release has no follow-up rule for at all.
+  // issue #16 Candidate D: GR-4-r2 additionally requires the episode origin to be false.
   const showFollowUpCriterionInput =
     input.nodule_morphology === "solid" &&
     input.assessment_context === "incidental" &&
     input.assessment_timepoint === "follow-up" &&
-    input.nodule_count === 1;
+    input.nodule_count === 1 &&
+    input.fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed === false;
 
   // issue #16 Candidate A: the GR-5 shape (multiple subsolid, initial) needs no diameter/volume
   // measurement at all -- its step-2 measurement block is replaced by the Fleischner set-level
@@ -175,22 +196,76 @@ export function App() {
   // issue #16 Candidate C: the GR-7 shape likewise needs no single-lesion measurement -- its
   // step-2 block asks only the governing-nodule safeguard (no Fleischner risk category).
   const multipleSolidGte6mmShape = isMultipleSolidGte6mmShape(input);
+  // issue #16 Candidate D: the GR-8 shape (episode origin confirmed) -- no count, morphology, or
+  // measurement is asked on it.
+  const gr8Shape = isMultipleSolidGte6mmFirstFollowUpShape(input);
   const outOfScopeReason = pathwayStepOutOfScopeReason(input);
 
   const canConfirmPathway = canContinuePastPathwayStep(input);
+
+  // issue #20/#18: the Fleischner-bound convention-checked measurement is populated only when the
+  // clinician has explicitly affirmed it for a whole-mm value -- never inferred from
+  // nodule_size_mm alone, and never emitted for a fractional value the convention could never
+  // have produced. The legacy nodule_size_mm value used by S3/BTS is untouched either way. The
+  // solid-component measurement is populated independently, under its own convention id, only
+  // when its own confirmation is checked -- never copied from or derived from the whole-nodule
+  // value. issue #16 Candidate D: shared by the guided dry run and handleEvaluate, so both
+  // evaluate exactly the same Clinical Input State.
+  const buildEvaluationInput = (): ClinicalInputState => ({
+    ...input,
+    ...(fleischnerConventionConfirmed && isWholeMmDiameter
+      ? {
+          nodule_diameter_measurements: [
+            { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" as const },
+          ],
+        }
+      : {}),
+    ...(solidComponentConventionConfirmed && solidComponentSizeMm !== undefined
+      ? {
+          solid_component_diameter_measurements: [
+            {
+              valueMm: solidComponentSizeMm,
+              conventionId: "fleischner-2017-solid-component-long-axis" as const,
+            },
+          ],
+        }
+      : {}),
+  });
+
+  // issue #16 Candidate D (ADR-0012 §6): on the GR-8 shape the engine itself is the completeness
+  // oracle -- a pure dry run of the current input. Not caught: an authoring-defect error thrown by
+  // evaluate() propagates through the normal render error path and is never treated as missing
+  // input. Existing pathways keep their current canEvaluate until #40.
+  const dryRunTrace = useMemo(
+    () => (gr8Shape ? evaluate(buildEvaluationInput(), activeRelease) : null),
+    [gr8Shape, input, fleischnerConventionConfirmed, solidComponentSizeMm, solidComponentConventionConfirmed],
+  );
+  const dryRunCompleteness = dryRunTrace ? guidedCompleteness(dryRunTrace) : null;
   // issue #15 Candidate A0: the follow-up pathway is evaluable with no measurement field at all --
   // an unanswered S3 criterion is itself a valid, intended INSUFFICIENT_INPUT outcome (G3), not a
   // state the UI should block reaching. Unchanged for every existing initial-timepoint pathway.
   // issue #16 Candidate A: likewise for the GR-5 shape -- an unanswered Fleischner size state is
   // the intended Fleischner INSUFFICIENT_INPUT outcome. issue #16 Candidate C: likewise for the
   // GR-7 shape -- an unanswered safeguard is Fleischner INSUFFICIENT_INPUT, a not-confirmed one
-  // Fleischner OUTSIDE_CURRENT_RULESET_SCOPE.
-  const canEvaluate =
-    hasMeasurement ||
-    isFollowUpTimepoint ||
-    multipleSubsolidShape ||
-    multipleSolidLt6mmShape ||
-    multipleSolidGte6mmShape;
+  // Fleischner OUTSIDE_CURRENT_RULESET_SCOPE. issue #16 Candidate D: on the GR-8 shape, Evaluate is
+  // enabled only when the engine dry run reports no unresolved required input (ADR-0012 §6).
+  const canEvaluate = gr8Shape
+    ? dryRunCompleteness?.state === "complete"
+    : hasMeasurement ||
+      isFollowUpTimepoint ||
+      multipleSubsolidShape ||
+      multipleSolidLt6mmShape ||
+      multipleSolidGte6mmShape;
+
+  // issue #16 Candidate D: presentation only -- the labels of the still-unresolved questions the
+  // dry run reports, mapped through the GR-8 step's fields rendered at this state.
+  const gr8Fields = gr8RenderedFields(input);
+  const gr8RemainingLabels =
+    dryRunCompleteness?.state === "incomplete"
+      ? unresolvedFieldIds(dryRunCompleteness.unresolved)
+          .map((id) => gr8Fields.find((field) => field.id === id)?.label)
+          .filter((label): label is string => label !== undefined)
+      : [];
 
   const handleConfirmPathway = () => {
     if (!canConfirmPathway) return;
@@ -198,34 +273,7 @@ export function App() {
   };
 
   const handleEvaluate = () => {
-    // issue #20: the Fleischner-bound convention-checked measurement is populated only when the
-    // clinician has explicitly affirmed it for a whole-mm value -- never inferred from
-    // nodule_size_mm alone, and never emitted for a fractional value the convention could never
-    // have produced. The legacy nodule_size_mm value used by S3/BTS is untouched either way.
-    // issue #18: the solid-component measurement is populated independently, under its own
-    // convention id, only when its own confirmation is checked -- never copied from or derived
-    // from the whole-nodule value.
-    const evaluationInput: ClinicalInputState = {
-      ...input,
-      ...(fleischnerConventionConfirmed && isWholeMmDiameter
-        ? {
-            nodule_diameter_measurements: [
-              { valueMm: input.nodule_size_mm as number, conventionId: "fleischner-2017-average-diameter" as const },
-            ],
-          }
-        : {}),
-      ...(solidComponentConventionConfirmed && solidComponentSizeMm !== undefined
-        ? {
-            solid_component_diameter_measurements: [
-              {
-                valueMm: solidComponentSizeMm,
-                conventionId: "fleischner-2017-solid-component-long-axis" as const,
-              },
-            ],
-          }
-        : {}),
-    };
-    const result = evaluate(evaluationInput, activeRelease);
+    const result = evaluate(buildEvaluationInput(), activeRelease);
     setTrace(result);
     setStep("results");
   };
@@ -261,14 +309,17 @@ export function App() {
           </p>
           <div className="field-grid">
             {[
-              noduleCountField,
-              ...(input.nodule_count === 1
+              ...commonPathwayFields,
+              ...(requiresFirstFollowUpOriginAnswer(input) ? [firstFollowUpOriginField] : []),
+              ...(gr8Shape ? [] : [noduleCountField]),
+              ...(gr8Shape
+                ? []
+                : input.nodule_count === 1
                 ? solitaryPathwayFields
                 : input.nodule_count !== undefined &&
                     Number.isInteger(input.nodule_count) &&
                     input.nodule_count >= 2
                   ? [
-                      ...multipleCommonPathwayFields,
                       multipleAllSubsolidField,
                       ...(input.multiple_nodules_all_subsolid === false
                         ? [multipleSolidSetField]
@@ -289,7 +340,9 @@ export function App() {
               />
             ))}
           </div>
-          {input.multiple_nodules_all_subsolid === false &&
+          {requiresFirstFollowUpOriginAnswer(input) && <p>{FIRST_FOLLOW_UP_ORIGIN_HELP_TEXT}</p>}
+          {!gr8Shape &&
+            input.multiple_nodules_all_subsolid === false &&
             input.multiple_nodules_all_solid === true && (
               <p>{FLEISCHNER_MULTIPLE_SOLID_MEASUREMENT_HELP_TEXT}</p>
             )}
@@ -444,6 +497,77 @@ export function App() {
             </>
           )}
 
+          {/* issue #16 Candidate D (final spec §7.4): the GR-8 first follow-up step. Progressive
+              disclosure only -- the safeguard is answered fresh, the clinician omission question
+              appears only once the safeguard is confirmed, and the risk only once omission is
+              declined. Whether Evaluate is enabled comes from the engine dry run, never from
+              these conditions. */}
+          {gr8Shape && (
+            <>
+              <p>
+                This is the first follow-up after an initial Fleischner multiple solid nodule
+                assessment with at least one nodule 6 mm or larger. Fleischner describes a second CT
+                at 18–24 months depending on estimated risk. The app does not select, rank, or
+                measure an individual nodule, and does not evaluate stability, persistence, or
+                regression.
+              </p>
+              <p>{FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_HELP_TEXT}</p>
+              <p>{FLEISCHNER_MULTIPLE_SOLID_FOLLOW_UP_SAFEGUARD_HELP_TEXT}</p>
+              <p className="notice">{FLEISCHNER_MULTIPLE_SOLID_CONTEXT_NOTE}</p>
+              <div className="field-grid">
+                {multipleSolidGte6mmSafeguardFields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
+              {input.fleischner_multiple_solid_no_individual_nodule_requires_solitary_management === false && (
+                <p className="notice notice-block">
+                  {FLEISCHNER_MULTIPLE_SOLID_SOLITARY_SAFEGUARD_NOT_CONFIRMED_NOTICE}
+                </p>
+              )}
+              {showsGr8ClinicianDisposition(input) && (
+                <>
+                  <p>{CLINICIAN_DISPOSITION_HELP_TEXT}</p>
+                  <div className="field-grid">
+                    {clinicianDispositionFields.map((field) => (
+                      <FieldInput
+                        key={field.id}
+                        field={field}
+                        value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                        onChange={handleChange}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              {showsGr8FleischnerRisk(input) && (
+                <>
+                  <p>
+                    Select the Fleischner risk category you have determined for this patient. Low
+                    risk: CT at 18–24 months from baseline CT may be considered. High risk: CT at
+                    18–24 months from baseline CT is recommended. The app does not calculate,
+                    score, weight, or infer this category from any other input.
+                  </p>
+                  <FleischnerRiskDecisionSupport />
+                  <div className="field-grid">
+                    {multipleSolidFleischnerRiskFields.map((field) => (
+                      <FieldInput
+                        key={field.id}
+                        field={field}
+                        value={input[field.id as keyof ClinicalInputState] as FieldValue}
+                        onChange={handleChange}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
           {showFollowUpCriterionInput && (
             <>
               <p>
@@ -468,10 +592,18 @@ export function App() {
             </>
           )}
 
-          <p>
-            Age, malignancy history, and immunocompromise status are used independently by each
-            guideline. Leaving one blank only affects the guideline(s) that need it.
-          </p>
+          {gr8Shape ? (
+            <p>
+              Age, malignancy history, and immunocompromise status are used independently by each
+              guideline. On this pathway, Evaluate becomes available once every question the
+              evaluation still needs has been answered.
+            </p>
+          ) : (
+            <p>
+              Age, malignancy history, and immunocompromise status are used independently by each
+              guideline. Leaving one blank only affects the guideline(s) that need it.
+            </p>
+          )}
           <div className="field-grid">
             {applicabilityFields.map((field) => (
               <FieldInput
@@ -482,6 +614,11 @@ export function App() {
               />
             ))}
           </div>
+          {gr8Shape && gr8RemainingLabels.length > 0 && (
+            <p className="notice">
+              Answer the remaining required question(s) to evaluate: {gr8RemainingLabels.join("; ")}
+            </p>
+          )}
           <div className="button-row">
             <button onClick={() => setStep("pathway")}>Back</button>
             <button disabled={!canEvaluate} onClick={handleEvaluate}>
@@ -493,7 +630,13 @@ export function App() {
 
       {step === "results" && trace && (
         <section aria-label="Results">
-          <h2>3. Source Evaluation Outcomes</h2>
+          {/* issue #16 Candidate D: a clinician-directed disposition is not a Source Evaluation
+              Outcome, so the heading stays neutral for it. */}
+          <h2>
+            {trace.clinicalDispositionEvaluation?.state === "DISPOSITION"
+              ? "3. Result"
+              : "3. Source Evaluation Outcomes"}
+          </h2>
 
           {trace.pathwaySelection.state !== "MATCHED" && (
             <p className="notice notice-block">
@@ -502,7 +645,26 @@ export function App() {
             </p>
           )}
 
-          {trace.pathwaySelection.state === "MATCHED" && (
+          {/* issue #16 Candidate D (ADR-0012 §3/§4): a terminal clinician-directed disposition
+              replaces the outcome list entirely -- no source was evaluated, so no source outcome
+              and no BTS line is shown. */}
+          {trace.pathwaySelection.state === "MATCHED" &&
+            trace.clinicalDispositionEvaluation?.state === "DISPOSITION" &&
+            trace.clinicalDispositionEvaluation.disposition && (
+              <ClinicalDispositionView disposition={trace.clinicalDispositionEvaluation.disposition} />
+            )}
+
+          {trace.pathwaySelection.state === "MATCHED" &&
+            trace.clinicalDispositionEvaluation?.state === "INSUFFICIENT_INPUT" && (
+              <p className="notice notice-block">
+                The clinician-directed disposition question is unresolved. No guideline was
+                evaluated.
+              </p>
+            )}
+
+          {trace.pathwaySelection.state === "MATCHED" &&
+            (trace.clinicalDispositionEvaluation === undefined ||
+              trace.clinicalDispositionEvaluation.state === "NONE_MATCHED") && (
             <ul className="outcome-list">
               {trace.sourceEvaluationOutcomes.map((outcome) => (
                 <li key={outcome.recommendationSourceId} className={`outcome outcome-${outcome.state}`}>

@@ -62,10 +62,15 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
       { multiple_nodules_all_solid: false },
       { multiple_nodules_discrete_circumscribed: false },
       { assessment_context: "screening" },
-      { assessment_timepoint: "follow-up" },
+      { assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false },
     ]) {
       expect(evaluate({ ...base, ...override }, release).pathwaySelection.state).toBe("NO_PATHWAY_MATCHED");
     }
+    // issue #16 Candidate D (final spec §12 change 2): a multiple-nodule follow-up whose origin is
+    // still unanswered fails closed as pathway INSUFFICIENT_INPUT (GR-8 INDETERMINATE).
+    expect(evaluate({ ...base, assessment_timepoint: "follow-up" }, release).pathwaySelection.state).toBe(
+      "INSUFFICIENT_INPUT",
+    );
   });
 
   it("case 5 (updated for #16 Candidate C): >=6 mm with a stray high risk -> GR-7 MATCHED, Fleischner INSUFFICIENT_INPUT on the safeguard (risk never consulted)", () => {
@@ -132,7 +137,7 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
     expect(gr7?.missingFields).toEqual(["multiple_nodules_all_solid"]);
   });
 
-  it("exhaustive GR-1..GR-7 sweep never produces more than one matched pathway; GR-6 and GR-7 never co-match", () => {
+  it("exhaustive GR-1..GR-8 sweep (Candidate D case 6: x origin {true, false, absent}) never produces more than one matched pathway; GR-6/GR-7 and GR-4/GR-8 never co-match", () => {
     const tri = [true, false, undefined] as const;
     const counts = [1, 2, 3];
     const timepoints = ["initial", "follow-up", undefined] as const;
@@ -144,7 +149,8 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
           for (const allSolid of tri)
             for (const discrete of tri)
               for (const allLt6 of tri)
-                for (const nodule_morphology of morphologies) {
+                for (const nodule_morphology of morphologies)
+                  for (const origin of tri) {
                   const input: ClinicalInputState = {
                     assessment_context: "incidental",
                     nodule_count,
@@ -154,6 +160,9 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
                     ...(discrete === undefined ? {} : { multiple_nodules_discrete_circumscribed: discrete }),
                     ...(allLt6 === undefined ? {} : { fleischner_multiple_solid_all_lt_6mm: allLt6 }),
                     ...(nodule_morphology === undefined ? {} : { nodule_morphology }),
+                    ...(origin === undefined
+                      ? {}
+                      : { fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: origin }),
                   };
                   const trace = evaluate(input, release);
                   const matched = trace.clinicalPathwayGates
@@ -161,9 +170,10 @@ describe("#16 Candidate B — multiple solid nodules, all <6 mm", () => {
                     .map((g) => g.ruleId);
                   expect(matched.length).toBeLessThanOrEqual(1);
                   expect(matched.includes("GR-6") && matched.includes("GR-7")).toBe(false);
+                  expect(matched.includes("GR-4") && matched.includes("GR-8")).toBe(false);
                   combinations++;
                 }
-    expect(combinations).toBe(1458);
+    expect(combinations).toBe(1458 * 3);
   });
 
   it("risk absent -> Fleischner INSUFFICIENT_INPUT", () => {

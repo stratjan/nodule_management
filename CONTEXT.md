@@ -26,6 +26,13 @@ _Avoid_: Eligibility check, source metadata, applicability check (ambiguous with
 The smallest unit of clinical logic: a condition over Clinical Input State, scoped to exactly one Recommendation Source, that produces one Recommendation when matched. Two sources disagreeing means two separate Atomic Clinical Rules in the same Clinical Pathway, not one rule with conflicting provenance. Has a stable identity that persists across Rule Revisions.
 _Avoid_: Rule (when source scope matters), decision rule
 
+**Clinical Disposition Rule**:
+A governed rule bound to exactly one Clinical Pathway whose AND-only conditions (the same fixed condition vocabulary as every other rule) record a clinician's own terminal decision on that pathway (ADR-0012). It is not a Gating Rule (it never decides which Clinical Pathway applies) and not an Atomic Clinical Rule (it has no Recommendation Source). Evaluated after the Clinical Pathway is matched and before any Source Applicability Rule; governed like every other rule (stable identity, Rule Revisions, Approval Status, Provenance citing the authorizing Clinical/Product decision, never a Source Guideline).
+
+**Clinical Disposition**:
+The recorded terminal clinician-directed decision produced when exactly one Clinical Disposition Rule matches (e.g. "no further routine nodule surveillance planned"). Ends evaluation before any Recommendation Source is evaluated; it is not a Recommendation, never enters the Recommendation Set, is never attributed to a Recommendation Source, and is never rendered as a source's `NOT_APPLICABLE` or "no routine follow-up". Carried in the Decision Execution Trace.
+_Avoid_: Clinician recommendation, clinician source
+
 **Clinical Endpoint**:
 A terminal recommendation category an Atomic Clinical Rule's action resolves to (e.g. no further surveillance, CT surveillance, PET-CT, biopsy, surgical/local treatment, multidisciplinary review).
 _Avoid_: Outcome, result
@@ -39,7 +46,7 @@ The full collection of Recommendations produced for one Clinical Input State eva
 _Avoid_: Merged recommendation, consensus recommendation, final recommendation
 
 **Source Evaluation Outcome**:
-The result of evaluating one Recommendation Source against a Clinical Input State that has already passed the Clinical Pathway's Gating Rule(s): exactly one of `RECOMMENDATION` (an Approved Atomic Clinical Rule matched — carries the Recommendation), `NOT_APPLICABLE` (that source's Source Applicability Rule did not match), `OUTSIDE_CURRENT_RULESET_SCOPE` (the source is applicable and sufficient input exists, but no Approved Atomic Clinical Rule in the Active Rule-Set Release covers this input), or `INSUFFICIENT_INPUT` (required source-specific input for applicability or rule-matching is missing). Produced once per Recommendation Source per evaluation, carried in the Decision Execution Trace regardless of which state it is — a non-`RECOMMENDATION` outcome is never silently omitted.
+The result of evaluating one Recommendation Source against a Clinical Input State that has already passed the Clinical Pathway's Gating Rule(s): exactly one of `RECOMMENDATION` (an Approved Atomic Clinical Rule matched — carries the Recommendation), `NOT_APPLICABLE` (that source's Source Applicability Rule did not match), `OUTSIDE_CURRENT_RULESET_SCOPE` (the source is applicable and sufficient input exists, but no Approved Atomic Clinical Rule in the Active Rule-Set Release covers this input), or `INSUFFICIENT_INPUT` (required source-specific input for applicability or rule-matching is missing). When source evaluation occurs, each evaluated Recommendation Source produces exactly one Source Evaluation Outcome (ADR-0010), carried in the Decision Execution Trace regardless of which state it is — a non-`RECOMMENDATION` outcome is never silently omitted. A terminal Clinical Disposition (ADR-0012) ends the evaluation before any Recommendation Source is evaluated; that evaluation then has no Source Evaluation Outcome, and none is fabricated — the Clinical Disposition is not itself a Source Evaluation Outcome.
 _Avoid_: Result, status (ambiguous with Approval Status), applicability (bare, ambiguous with Source Applicability Rule)
 
 **Recommendation Source**:
@@ -71,7 +78,7 @@ _Avoid_: Translation, source text, explanation (when meaning provenance specific
 ### Rule lifecycle & release governance
 
 **Rule Revision**:
-A specific content version of an Atomic Clinical Rule, Gating Rule, or Source Applicability Rule. New content for an existing rule is always authored as a new Rule Revision, never an edit in place, and carries its own Approval Status.
+A specific content version of an Atomic Clinical Rule, Gating Rule, Source Applicability Rule, or Clinical Disposition Rule. New content for an existing rule is always authored as a new Rule Revision, never an edit in place, and carries its own Approval Status.
 _Avoid_: Rule version, rule update
 
 **Approval Status**:
@@ -79,7 +86,7 @@ The lifecycle state of a Rule Revision: *Draft* (authored, not yet asserted read
 _Avoid_: Review status, sign-off
 
 **Rule-Set**:
-The versioned collection of Gating Rules, Source Applicability Rules, and Atomic Clinical Rules across all Clinical Pathways.
+The versioned collection of Gating Rules, Source Applicability Rules, Atomic Clinical Rules, and Clinical Disposition Rules across all Clinical Pathways.
 _Avoid_: Rule package, clinical rule package
 
 **Rule-Set Release**:
@@ -95,7 +102,7 @@ The record accompanying a Rule-Set Release listing exactly which Rule Revisions 
 _Avoid_: Changelog, release notes
 
 **Decision Execution Trace**:
-The structured, reproducible record the deterministic engine produces for one evaluation: the exact Active Rule-Set Release used, normalized Clinical Input State, the applicable Clinical Pathway, the Source Evaluation Outcome for every Recommendation Source in the Active Rule-Set Release (including matched rule IDs and measurement basis/discordance where applicable), the resulting Recommendation Set, and engine/schema version. Ephemeral unless explicitly exported; generated without assuming server-side persistence. Distinct from the Clinical Knowledge Governance Audit, which audits how the knowledge base itself changed, not one evaluation.
+The structured, reproducible record the deterministic engine produces for one evaluation: the exact Active Rule-Set Release used, normalized Clinical Input State, the applicable Clinical Pathway, the Clinical Disposition stage evaluation where the pathway has Clinical Disposition Rules, the Source Evaluation Outcome for every Recommendation Source in the Active Rule-Set Release (including matched rule IDs and measurement basis/discordance where applicable) unless the Clinical Disposition stage terminated evaluation first (a matched Clinical Disposition, or disposition-stage `INSUFFICIENT_INPUT`; ADR-0012), the resulting Recommendation Set, and engine/schema version. Ephemeral unless explicitly exported; generated without assuming server-side persistence. Distinct from the Clinical Knowledge Governance Audit, which audits how the knowledge base itself changed, not one evaluation.
 _Avoid_: Audit log, decision log, result trace
 
 **Clinical Knowledge Governance Audit**:

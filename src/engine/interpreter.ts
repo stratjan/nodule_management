@@ -51,9 +51,11 @@ export interface ConditionClassification {
 }
 
 /**
- * Three-valued classification used for Clinical Pathway Gate selection (issue #17), distinct
- * from evaluateConditions' binary allFieldsPresent/matched shape used everywhere else (Source
- * Applicability Rules, Atomic Clinical Rules): a supplied value that already contradicts a
+ * Three-valued classification used for Clinical Pathway Gate selection (issue #17), Clinical
+ * Disposition Rules and bare-`conditions` Atomic Clinical Rules (ADR-0012 §3/§5), and
+ * sufficientConditionGroups groups (issue #28) -- distinct from evaluateConditions' binary
+ * allFieldsPresent/matched shape used for Source Applicability Rules and measurement-shaped
+ * Atomic Clinical Rules: a supplied value that already contradicts a
  * condition makes the whole AND-conjunction NOT_MATCHED even if another referenced field is
  * still missing -- a missing field must never mask an already-definitive mismatch, since that
  * would force INSUFFICIENT_INPUT/INDETERMINATE for a pathway already excluded by known data.

@@ -2,8 +2,14 @@
 //   Clinical Input State
 //     -> Clinical Pathway Gating Rule(s)
 //     -> applicable Clinical Pathway
+//     -> Clinical Disposition stage (ADR-0012 §4; only if the pathway has bound Clinical
+//        Disposition Rules): exactly one MATCHED -> terminal Clinical Disposition, no source
+//        evaluated; zero MATCHED + any INDETERMINATE -> disposition-stage INSUFFICIENT_INPUT, no
+//        source evaluated; more than one MATCHED -> AmbiguousClinicalDispositionMatchError;
+//        all NOT_MATCHED -> continue
 //     -> per-source Source Applicability Rule
-//     -> per-source Atomic Clinical Rule evaluation (evaluate-all-then-classify, issue #20)
+//     -> per-source Atomic Clinical Rule evaluation (evaluate-all-then-classify, issue #20;
+//        bare-`conditions` rules three-valued, ADR-0012 §5)
 //     -> Source Evaluation Outcome (RECOMMENDATION | NOT_APPLICABLE
 //                                    | OUTSIDE_CURRENT_RULESET_SCOPE | INSUFFICIENT_INPUT)
 //     -> Recommendation Set (RECOMMENDATION-state entries only)
@@ -13,6 +19,8 @@ import { classifyConditions, evaluateConditions } from "./interpreter";
 import type {
   AtomicClinicalRuleRevision,
   ClinicalCriterionBasis,
+  ClinicalDispositionEvaluation,
+  ClinicalDispositionRuleRevision,
   ClinicalInputState,
   ClinicalPathwayGateResult,
   DecisionExecutionTrace,
@@ -27,6 +35,7 @@ import type {
   SourceApplicabilityRevision,
   SourceEvaluationOutcome,
   SufficientConditionGroup,
+  UnresolvedRequiredInput,
 } from "./types";
 import {
   hasMultiAnchorProvenance,
@@ -38,8 +47,14 @@ import {
   OPERAND_SHADOW_FIELD,
 } from "./types";
 
-export const ENGINE_VERSION = "1.9.0";
-export const SCHEMA_VERSION = "1.9.0";
+export const ENGINE_VERSION = "1.10.0";
+export const SCHEMA_VERSION = "1.10.0";
+
+/** ADR-0012 §6: one `field` entry per missing field, in order -- the structured counterpart of a
+ * missingFields list, never derived from `reason`. */
+function fieldInputs(fields: string[]): UnresolvedRequiredInput[] {
+  return fields.map((field) => ({ kind: "field", field }));
+}
 
 /**
  * issue #17: more than one governed Clinical Pathway Gate matching the same Clinical Input State
@@ -84,6 +99,25 @@ export class AmbiguousRuleMatchError extends Error {
 }
 
 /**
+ * ADR-0012 §3/§4 (issue #16 Candidate D): more than one governed Clinical Disposition Rule bound to
+ * the matched pathway matching the same Clinical Input State is a Rule-Set authoring defect, not a
+ * clinical outcome -- mirrors AmbiguousPathwayMatchError exactly. Thrown, never encoded as a
+ * disposition-stage state.
+ */
+export class AmbiguousClinicalDispositionMatchError extends Error {
+  constructor(public readonly matchedRules: ClinicalDispositionRuleRevision[]) {
+    super(
+      `Ambiguous Rule-Set: ${matchedRules.length} Clinical Disposition Rules matched the same ` +
+        `Clinical Input State: ${matchedRules
+          .map((r) => `${r.ruleId}@${r.revisionId} (${r.clinicalPathwayId})`)
+          .join(", ")}. The engine refuses to select a disposition; this indicates a Rule-Set ` +
+        `authoring defect.`,
+    );
+    this.name = "AmbiguousClinicalDispositionMatchError";
+  }
+}
+
+/**
  * issue #18: the outcome of resolving one convention-bound measurement operand. "ambiguous"
  * (more than one entry sharing the required conventionId) is distinguished from "missing" (no
  * matching entry at all) -- both are Clinical-Input-State data-quality problems, never a
@@ -124,6 +158,15 @@ function insufficientInputForMeasurement(
   requiredId: MeasurementConventionId,
   sourceId: string,
 ): SourceEvaluationOutcome {
+  // ADR-0012 §6: the structured counterpart of the reason below.
+  const unresolvedRequiredInputs: UnresolvedRequiredInput[] = [
+    {
+      kind: "convention-bound-measurement",
+      container: OPERAND_CONTAINER[target === "whole-nodule" ? "wholeNodule" : "solidComponent"],
+      conventionId: requiredId,
+      problem: resolution.state,
+    },
+  ];
   if (resolution.state === "ambiguous") {
     return {
       recommendationSourceId: sourceId,
@@ -131,6 +174,7 @@ function insufficientInputForMeasurement(
       reason:
         `Multiple (${resolution.count}) ${target} diameter measurements were supplied under the ` +
         `same required convention ("${requiredId}") -- cannot determine which value to use.`,
+      unresolvedRequiredInputs,
     };
   }
   const reason =
@@ -139,7 +183,7 @@ function insufficientInputForMeasurement(
     (resolution.suppliedIds.length === 0
       ? `no convention-bound ${target} diameter measurements were supplied.`
       : `supplied convention id(s): ${resolution.suppliedIds.join(", ")}.`);
-  return { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason };
+  return { recommendationSourceId: sourceId, state: "INSUFFICIENT_INPUT", reason, unresolvedRequiredInputs };
 }
 
 /**
@@ -186,6 +230,11 @@ function isAtomicClinicalRule(
   r: RuleSetRelease["revisions"][number],
 ): r is AtomicClinicalRuleRevision {
   return r.kind === "atomic-clinical-rule";
+}
+function isClinicalDisposition(
+  r: RuleSetRelease["revisions"][number],
+): r is ClinicalDispositionRuleRevision {
+  return r.kind === "clinical-disposition";
 }
 
 /** issue #20/#17/#16 Candidate B: carries whichever of the five recommendation forms the rule declared, through
@@ -343,6 +392,7 @@ function evaluateSingleAtomicRule(
     recommendationSourceId: sourceId,
     state: "INSUFFICIENT_INPUT",
     reason: `Missing required input for rule-matching: ${missingFields.join(", ")}.`,
+    unresolvedRequiredInputs: fieldInputs(missingFields),
   });
 
   // issue #15 Candidate A0: clinical-condition-shaped rules (no measurementBasis) are evaluated
@@ -379,11 +429,15 @@ function evaluateSingleAtomicRule(
       };
     }
 
-    const result = evaluateConditions(rule.conditions!, input);
-    if (!result.allFieldsPresent) {
+    // ADR-0012 §5 (R2): three-valued, like Pathway Gates -- a supplied contradiction decides the
+    // rule (NOT_MATCHED) even if another referenced field is still missing. Outcome-neutral for
+    // every single-condition rule, which is every bare-`conditions` rule in every historical
+    // Release.
+    const result = classifyConditions(rule.conditions!, input);
+    if (result.state === "INDETERMINATE") {
       return { rule, outcome: insufficientInput(result.missingFields) };
     }
-    if (result.matched) {
+    if (result.state === "MATCHED") {
       return { rule, outcome: buildRecommendation({ clinicalCriterionUsed: "clinician-attestation" }) };
     }
     return {
@@ -595,6 +649,7 @@ function evaluateSingleAtomicRule(
           recommendationSourceId: sourceId,
           state: "INSUFFICIENT_INPUT",
           reason: "Diameter is required for this source and was not supplied.",
+          unresolvedRequiredInputs: [{ kind: "field", field: "nodule_size_mm" }],
         },
       };
     }
@@ -620,6 +675,7 @@ function evaluateSingleAtomicRule(
         recommendationSourceId: sourceId,
         state: "INSUFFICIENT_INPUT",
         reason: "Neither diameter nor volume was supplied.",
+        unresolvedRequiredInputs: [{ kind: "any-of-fields", fields: ["nodule_size_mm", "nodule_volume_mm3"] }],
       },
     };
   }
@@ -772,6 +828,7 @@ function evaluateSource(
       recommendationSourceId: applicability.recommendationSourceId,
       state: "INSUFFICIENT_INPUT",
       reason: `Missing required applicability input: ${appResult.missingFields.join(", ")}.`,
+      unresolvedRequiredInputs: fieldInputs(appResult.missingFields),
     };
   }
 
@@ -784,6 +841,68 @@ function evaluateSource(
   }
 
   return evaluateAtomicRulesForSource(atomicRules, input);
+}
+
+/**
+ * ADR-0012 §3/§4: classifies every Clinical Disposition Rule bound to the matched pathway with the
+ * same three-valued, evaluate-all, unordered semantics as Pathway Gates. Clinical ordering (e.g.
+ * "the safeguard is confirmed before omission can be chosen") lives in each rule's own conditions,
+ * never here.
+ */
+function evaluateClinicalDispositionStage(
+  rules: ClinicalDispositionRuleRevision[],
+  input: ClinicalInputState,
+): ClinicalDispositionEvaluation {
+  const classifications = rules.map((rule) => ({ rule, result: classifyConditions(rule.conditions, input) }));
+  const ruleResults = classifications.map(({ rule, result }) => ({
+    ruleId: rule.ruleId,
+    revisionId: rule.revisionId,
+    state: result.state,
+    missingFields: result.missingFields,
+  }));
+
+  const matched = classifications.filter((c) => c.result.state === "MATCHED").map((c) => c.rule);
+  if (matched.length > 1) {
+    throw new AmbiguousClinicalDispositionMatchError(matched);
+  }
+
+  if (matched.length === 1) {
+    const rule = matched[0];
+    return {
+      rules: ruleResults,
+      state: "DISPOSITION",
+      disposition: {
+        ruleId: rule.ruleId,
+        revisionId: rule.revisionId,
+        ...rule.disposition,
+        provenance: rule.provenance,
+      },
+      reason:
+        "A governed Clinical Disposition Rule bound to this pathway matched. The clinician-directed " +
+        "disposition is terminal; no Recommendation Source was evaluated, and no source " +
+        "applicability is claimed.",
+    };
+  }
+
+  const indeterminate = classifications.filter((c) => c.result.state === "INDETERMINATE");
+  if (indeterminate.length > 0) {
+    const fields = [...new Set(indeterminate.flatMap((c) => c.result.missingFields))];
+    return {
+      rules: ruleResults,
+      state: "INSUFFICIENT_INPUT",
+      unresolvedRequiredInputs: fieldInputs(fields),
+      reason:
+        "A Clinical Disposition Rule bound to this pathway could not be decided because required " +
+        `input is unresolved: ${fields.join(", ")}. No Recommendation Source was evaluated.`,
+    };
+  }
+
+  return {
+    rules: ruleResults,
+    state: "NONE_MATCHED",
+    reason:
+      "No Clinical Disposition Rule bound to this pathway matched; Recommendation Sources were evaluated.",
+  };
 }
 
 /**
@@ -846,6 +965,22 @@ export function evaluate(
   }
 
   const matchedPathwayId = pathwaySelection.clinicalPathwayId;
+
+  // ADR-0012 §4: the pre-source Clinical Disposition stage. Skipped entirely (no trace entry) when
+  // the matched pathway has no bound disposition rule -- every existing pathway and every
+  // historical Release.
+  const dispositionRules = release.revisions
+    .filter(isClinicalDisposition)
+    .filter((r) => r.clinicalPathwayId === matchedPathwayId);
+  if (dispositionRules.length > 0) {
+    const dispositionEvaluation = evaluateClinicalDispositionStage(dispositionRules, input);
+    trace.clinicalDispositionEvaluation = dispositionEvaluation;
+    if (dispositionEvaluation.state !== "NONE_MATCHED") {
+      // Terminal disposition, or disposition-stage INSUFFICIENT_INPUT: no Recommendation Source is
+      // evaluated and no Source Evaluation Outcome is fabricated.
+      return trace;
+    }
+  }
 
   const applicabilityRules = release.revisions.filter(isSourceApplicability);
   // issue #17: scoped to the matched pathway only. A legacy, unbound Atomic Clinical Rule

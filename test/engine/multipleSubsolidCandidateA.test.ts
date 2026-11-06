@@ -63,6 +63,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-5": "MATCHED",
       "GR-6": "NOT_MATCHED",
       "GR-7": "NOT_MATCHED",
+      "GR-8": "NOT_MATCHED",
     });
   });
 
@@ -77,6 +78,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
       "GR-5": "MATCHED",
       "GR-6": "NOT_MATCHED",
       "GR-7": "NOT_MATCHED",
+      "GR-8": "NOT_MATCHED",
     });
   });
 
@@ -172,6 +174,7 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
           nodule_morphology: "solid",
           assessment_context: "incidental",
           assessment_timepoint: "follow-up",
+          fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false,
           nodule_count: 1,
           age: 55,
           known_malignancy_history: false,
@@ -195,9 +198,12 @@ describe("GR-5 pathway selection (cases 1-10)", () => {
     }
   });
 
-  it("case 8: base with follow-up timepoint -> NO_PATHWAY_MATCHED", () => {
-    const trace = evaluate({ ...base, assessment_timepoint: "follow-up" }, release);
+  it("case 8 (updated for #16 Candidate D, final spec §12 change 2): base with follow-up timepoint -> NO_PATHWAY_MATCHED with origin false; fail-closed INSUFFICIENT_INPUT while the origin is unanswered", () => {
+    const trace = evaluate({ ...base, assessment_timepoint: "follow-up", fleischner_multiple_solid_gte6mm_first_follow_up_origin_confirmed: false }, release);
     expect(trace.pathwaySelection).toEqual({ state: "NO_PATHWAY_MATCHED" });
+    const unanswered = evaluate({ ...base, assessment_timepoint: "follow-up" }, release);
+    expect(unanswered.pathwaySelection).toEqual({ state: "INSUFFICIENT_INPUT" });
+    expect(unanswered.clinicalPathwayGates.find((g) => g.ruleId === "GR-8")?.state).toBe("INDETERMINATE");
   });
 
   it("case 9: base with screening context -> NO_PATHWAY_MATCHED", () => {
@@ -421,9 +427,9 @@ describe("governed JSON shape (case 32)", () => {
 });
 
 describe("versions (case 33)", () => {
-  it("a Candidate-A trace reports the current engineVersion and schemaVersion (1.9.0 since #16 Candidate C)", () => {
+  it("a Candidate-A trace reports the current engineVersion and schemaVersion (1.10.0 since #16 Candidate D)", () => {
     const trace = evaluate({ ...base, fleischner_multiple_subsolid_any_gte_6mm: true }, release);
-    expect(trace.engineVersion).toBe("1.9.0");
-    expect(trace.schemaVersion).toBe("1.9.0");
+    expect(trace.engineVersion).toBe("1.10.0");
+    expect(trace.schemaVersion).toBe("1.10.0");
   });
 });
